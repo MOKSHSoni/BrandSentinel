@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
+body {
+  background: #f6f7fb;
+  color: #0f172a;
+}
+
+mark {
+  color: inherit;
+}

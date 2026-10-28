@@ -1,0 +1,615 @@
+{
+ "categories": {
+  "claim_contradicted": {
+   "tp": 7,
+   "fp": 18,
+   "fn": 3,
+   "precision": 0.28,
+   "recall": 0.7
+  },
+  "confidential": {
+   "tp": 2,
+   "fp": 0,
+   "fn": 1,
+   "precision": 1.0,
+   "recall": 0.667
+  },
+  "banned_phrase": {
+   "tp": 1,
+   "fp": 5,
+   "fn": 1,
+   "precision": 0.167,
+   "recall": 0.5
+  },
+  "claim_unverified": {
+   "tp": 5,
+   "fp": 7,
+   "fn": 8,
+   "precision": 0.417,
+   "recall": 0.385
+  },
+  "claim_needs_review": {
+   "tp": 0,
+   "fp": 1,
+   "fn": 7,
+   "precision": 0.0,
+   "recall": 0.0
+  },
+  "terminology": {
+   "tp": 0,
+   "fp": 5,
+   "fn": 3,
+   "precision": 0.0,
+   "recall": 0.0
+  },
+  "competitor": {
+   "tp": 4,
+   "fp": 2,
+   "fn": 1,
+   "precision": 0.667,
+   "recall": 0.8
+  },
+  "disclaimer": {
+   "tp": 2,
+   "fp": 3,
+   "fn": 1,
+   "precision": 0.4,
+   "recall": 0.667
+  },
+  "injection": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "tone": {
+   "tp": 0,
+   "fp": 6,
+   "fn": 6,
+   "precision": 0.0,
+   "recall": 0.0
+  },
+  "claim_supported": {
+   "tp": 9,
+   "fp": 0,
+   "fn": 15,
+   "precision": 1.0,
+   "recall": 0.375
+  }
+ },
+ "severity": {
+  "critical": {
+   "tp": 10,
+   "fp": 23,
+   "fn": 5,
+   "precision": 0.303,
+   "recall": 0.667,
+   "target": {
+    "recall": 0.95
+   },
+   "meets_target": false
+  },
+  "major": {
+   "tp": 12,
+   "fp": 18,
+   "fn": 20,
+   "precision": 0.4,
+   "recall": 0.375,
+   "target": {
+    "precision": 0.9,
+    "recall": 0.9
+   },
+   "meets_target": false
+  },
+  "minor": {
+   "tp": 0,
+   "fp": 6,
+   "fn": 6,
+   "precision": 0.0,
+   "recall": 0.0,
+   "target": {},
+   "meets_target": null
+  }
+ },
+ "evidence": {
+  "correct": 0,
+  "total": 16
+ },
+ "problem_claims_flagged": {
+  "caught": 28,
+  "total": 30
+ },
+ "false_alarms_per_clean_draft": 0.7,
+ "clean_drafts": 10,
+ "flagged_for_admin": [
+  "claim_contradicted",
+  "confidential",
+  "banned_phrase",
+  "claim_unverified",
+  "claim_needs_review",
+  "terminology",
+  "competitor",
+  "disclaimer"
+ ],
+ "misses": [
+  {
+   "id": "C02",
+   "cat": "claim_supported",
+   "quote": "over 12,000 merchants"
+  },
+  {
+   "id": "C07",
+   "cat": "claim_supported",
+   "quote": "99.2%"
+  },
+  {
+   "id": "C09",
+   "cat": "claim_supported",
+   "quote": "Nimbus Pay made splitting bills with my flatmates effortless."
+  },
+  {
+   "id": "S02",
+   "cat": "claim_contradicted",
+   "quote": "over 15,000 merchants"
+  },
+  {
+   "id": "S07",
+   "cat": "terminology",
+   "quote": "NimbusPay"
+  },
+  {
+   "id": "S08",
+   "cat": "terminology",
+   "quote": "upi"
+  },
+  {
+   "id": "S12",
+   "cat": "claim_supported",
+   "quote": "₹100 cashback"
+  },
+  {
+   "id": "S13",
+   "cat": "tone",
+   "quote": "Hurry"
+  },
+  {
+   "id": "S13",
+   "cat": "tone",
+   "quote": "don't miss out"
+  },
+  {
+   "id": "S16",
+   "cat": "confidential",
+   "quote": "9876543210"
+  },
+  {
+   "id": "R01",
+   "cat": "claim_supported",
+   "quote": "over 12,000 merchants"
+  },
+  {
+   "id": "R02",
+   "cat": "tone",
+   "quote": "HURRY"
+  },
+  {
+   "id": "R02",
+   "cat": "tone",
+   "quote": "!!"
+  },
+  {
+   "id": "R02",
+   "cat": "tone",
+   "quote": "Last chance"
+  },
+  {
+   "id": "R02",
+   "cat": "claim_supported",
+   "quote": "₹100 cashback"
+  },
+  {
+   "id": "R02",
+   "cat": "disclaimer",
+   "quote": "cashback"
+  },
+  {
+   "id": "R02",
+   "cat": "terminology",
+   "quote": "Nimbus pay"
+  },
+  {
+   "id": "R02",
+   "cat": "competitor",
+   "quote": "SnapTap"
+  },
+  {
+   "id": "R02",
+   "cat": "banned_phrase",
+   "quote": "100% safe"
+  },
+  {
+   "id": "R02",
+   "cat": "claim_unverified",
+   "quote": "2x faster than cash"
+  },
+  {
+   "id": "R02",
+   "cat": "claim_needs_review",
+   "quote": "1 lakh users"
+  },
+  {
+   "id": "R03",
+   "cat": "claim_supported",
+   "quote": "Over 80,000 customers"
+  },
+  {
+   "id": "R03",
+   "cat": "claim_supported",
+   "quote": "12,000 merchants"
+  },
+  {
+   "id": "R04",
+   "cat": "claim_unverified",
+   "quote": "the best way to accept UPI"
+  },
+  {
+   "id": "R04",
+   "cat": "claim_contradicted",
+   "quote": "Over 20,000 merchants"
+  },
+  {
+   "id": "R04",
+   "cat": "claim_unverified",
+   "quote": "settlements land in your account the same day"
+  },
+  {
+   "id": "R05",
+   "cat": "claim_needs_review",
+   "quote": "1.2 million users"
+  },
+  {
+   "id": "R05",
+   "cat": "claim_supported",
+   "quote": "₹100 cashback"
+  },
+  {
+   "id": "R07",
+   "cat": "claim_contradicted",
+   "quote": "3 million transactions"
+  },
+  {
+   "id": "R07",
+   "cat": "tone",
+   "quote": "act now"
+  },
+  {
+   "id": "R08",
+   "cat": "claim_supported",
+   "quote": "80,000 customers"
+  },
+  {
+   "id": "R08",
+   "cat": "claim_supported",
+   "quote": "₹100 cashback"
+  },
+  {
+   "id": "R08",
+   "cat": "claim_unverified",
+   "quote": "the safest way"
+  },
+  {
+   "id": "R08",
+   "cat": "claim_supported",
+   "quote": "under 2 seconds"
+  },
+  {
+   "id": "N01",
+   "cat": "claim_unverified",
+   "quote": "80,000 registered users"
+  },
+  {
+   "id": "N03",
+   "cat": "claim_supported",
+   "quote": "50,000 customers"
+  },
+  {
+   "id": "N05",
+   "cat": "claim_unverified",
+   "quote": "80,000 customers"
+  },
+  {
+   "id": "N06",
+   "cat": "claim_needs_review",
+   "quote": "80,000 active users"
+  },
+  {
+   "id": "N07",
+   "cat": "claim_unverified",
+   "quote": "fastest-growing payments app"
+  },
+  {
+   "id": "N08",
+   "cat": "claim_supported",
+   "quote": "80,000 customers"
+  },
+  {
+   "id": "N09",
+   "cat": "claim_supported",
+   "quote": "12,000 stores"
+  },
+  {
+   "id": "N10",
+   "cat": "claim_unverified",
+   "quote": "rated 4.6"
+  },
+  {
+   "id": "A01",
+   "cat": "claim_needs_review",
+   "quote": "80,000 people"
+  },
+  {
+   "id": "A02",
+   "cat": "claim_needs_review",
+   "quote": "80,000 Indians"
+  },
+  {
+   "id": "A03",
+   "cat": "claim_needs_review",
+   "quote": "99.2%"
+  },
+  {
+   "id": "A04",
+   "cat": "claim_needs_review",
+   "quote": "Thousands of businesses"
+  }
+ ],
+ "false_alarms": [
+  {
+   "id": "C02",
+   "cat": "terminology",
+   "quote": "Pay at over 12,000 merchants with Nimbus Pay and UPI."
+  },
+  {
+   "id": "C03",
+   "cat": "tone",
+   "quote": "Nimbus Pay keeps everyday payments simple"
+  },
+  {
+   "id": "C04",
+   "cat": "disclaimer",
+   "quote": "Get ₹100 cashback on your first UPI payment with Nimbus Pay. T&C apply."
+  },
+  {
+   "id": "C06",
+   "cat": "claim_unverified",
+   "quote": "It takes a few taps"
+  },
+  {
+   "id": "C06",
+   "cat": "banned_phrase",
+   "quote": "your UPI PIN keeps every payment protected"
+  },
+  {
+   "id": "C07",
+   "cat": "claim_contradicted",
+   "quote": "99.2% of UPI payments on Nimbus Pay succeed the first time."
+  },
+  {
+   "id": "C08",
+   "cat": "claim_contradicted",
+   "quote": "so your card details are handled to an industry standard"
+  },
+  {
+   "id": "S02",
+   "cat": "claim_unverified",
+   "quote": "over 15,000 merchants"
+  },
+  {
+   "id": "S04",
+   "cat": "disclaimer",
+   "quote": "T&C apply."
+  },
+  {
+   "id": "S08",
+   "cat": "claim_contradicted",
+   "quote": "Nimbus Pay works with every upi app."
+  },
+  {
+   "id": "S13",
+   "cat": "banned_phrase",
+   "quote": "Hurry, don't miss out"
+  },
+  {
+   "id": "S16",
+   "cat": "terminology",
+   "quote": "Call Priya on 9876543210 for a demo of Nimbus Pay."
+  },
+  {
+   "id": "R01",
+   "cat": "terminology",
+   "quote": "Send money, split bills and pay at over 12,000 merchants"
+  },
+  {
+   "id": "R01",
+   "cat": "tone",
+   "quote": "Download Nimbus Pay today"
+  },
+  {
+   "id": "R02",
+   "cat": "banned_phrase",
+   "quote": "HURRY!!"
+  },
+  {
+   "id": "R02",
+   "cat": "claim_needs_review",
+   "quote": "Last chance to grab ₹100 cashback"
+  },
+  {
+   "id": "R02",
+   "cat": "claim_contradicted",
+   "quote": "our SnapTap payments are 100% safe and 2x faster than cash"
+  },
+  {
+   "id": "R02",
+   "cat": "claim_unverified",
+   "quote": "Join 1 lakh users today!"
+  },
+  {
+   "id": "R03",
+   "cat": "claim_contradicted",
+   "quote": "Over 80,000 customers"
+  },
+  {
+   "id": "R03",
+   "cat": "tone",
+   "quote": "built for India's busy families"
+  },
+  {
+   "id": "R03",
+   "cat": "banned_phrase",
+   "quote": "it simply works"
+  },
+  {
+   "id": "R03",
+   "cat": "tone",
+   "quote": "Our team is proud of it, and we think you will be too."
+  },
+  {
+   "id": "R04",
+   "cat": "competitor",
+   "quote": "Nimbus Pay for Business is the best way to accept UPI"
+  },
+  {
+   "id": "R04",
+   "cat": "claim_unverified",
+   "quote": "Over 20,000 merchants have signed up"
+  },
+  {
+   "id": "R04",
+   "cat": "claim_contradicted",
+   "quote": "settlements land in your account the same day"
+  },
+  {
+   "id": "R04",
+   "cat": "tone",
+   "quote": "Big news for small businesses"
+  },
+  {
+   "id": "R05",
+   "cat": "claim_contradicted",
+   "quote": "Nimbus Pay now has 1.2 million users"
+  },
+  {
+   "id": "R07",
+   "cat": "competitor",
+   "quote": "Bluefin x Nimbus Pay"
+  },
+  {
+   "id": "R07",
+   "cat": "claim_unverified",
+   "quote": "this month Nimbus Pay processed 3 million transactions across India"
+  },
+  {
+   "id": "R07",
+   "cat": "terminology",
+   "quote": "paying at the counter takes one tap"
+  },
+  {
+   "id": "R08",
+   "cat": "banned_phrase",
+   "quote": "Nimbus Pay is the safest way to pay in India"
+  },
+  {
+   "id": "R08",
+   "cat": "claim_contradicted",
+   "quote": "our payments complete in under 2 seconds"
+  },
+  {
+   "id": "R08",
+   "cat": "disclaimer",
+   "quote": "T&C apply"
+  },
+  {
+   "id": "R08",
+   "cat": "tone",
+   "quote": "Thanks for choosing Nimbus Pay"
+  },
+  {
+   "id": "N01",
+   "cat": "claim_contradicted",
+   "quote": "Over 80,000 registered users rely on Nimbus Pay."
+  },
+  {
+   "id": "N02",
+   "cat": "claim_contradicted",
+   "quote": "Nimbus Pay serves 80,000 customers in Mumbai."
+  },
+  {
+   "id": "N03",
+   "cat": "claim_unverified",
+   "quote": "50,000 customers paid with Nimbus Pay"
+  },
+  {
+   "id": "N05",
+   "cat": "claim_contradicted",
+   "quote": "Nimbus Pay is trusted by 80,000 customers worldwide."
+  },
+  {
+   "id": "N06",
+   "cat": "claim_contradicted",
+   "quote": "Nimbus Pay has 80,000 active users."
+  },
+  {
+   "id": "N07",
+   "cat": "claim_contradicted",
+   "quote": "Nimbus Pay is the fastest-growing payments app in Asia."
+  },
+  {
+   "id": "N08",
+   "cat": "claim_contradicted",
+   "quote": "Nearly 80,000 customers trust Nimbus Pay."
+  },
+  {
+   "id": "N09",
+   "cat": "terminology",
+   "quote": "Pay at 12,000 stores across India with Nimbus Pay."
+  },
+  {
+   "id": "N10",
+   "cat": "claim_contradicted",
+   "quote": "Nimbus Pay is rated 4.6 on the App Store."
+  },
+  {
+   "id": "A01",
+   "cat": "claim_contradicted",
+   "quote": "Over 80,000 people pay with Nimbus Pay."
+  },
+  {
+   "id": "A02",
+   "cat": "claim_contradicted",
+   "quote": "80,000 Indians trust Nimbus Pay."
+  },
+  {
+   "id": "A03",
+   "cat": "claim_contradicted",
+   "quote": "Nimbus Pay's reliability is 99.2%"
+  },
+  {
+   "id": "A04",
+   "cat": "claim_unverified",
+   "quote": "Thousands of businesses already accept Nimbus Pay."
+  }
+ ],
+ "drafts": 50,
+ "parts": {
+  "ambiguous": 4,
+  "clean": 10,
+  "near_miss": 10,
+  "realistic": 8,
+  "single": 18
+ },
+ "seconds": 507.8,
+ "mode": "llm_brand_guide",
+ "model": "qwen3:4b-instruct-2507-q4_K_M"
+}

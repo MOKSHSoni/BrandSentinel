@@ -1,0 +1,28 @@
+# Render blueprint for the BrandSentinel API. The frontend deploys to Vercel; the database is Neon.
+# See DEPLOY.md for the step-by-step guide.
+services:
+  - type: web
+    name: brandsentinel-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: DATABASE_URL
+        sync: false # Neon connection string
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGINS
+        sync: false # your Vercel URL, e.g. https://brandsentinel.vercel.app
+      - key: LOCAL_LLM_ENABLED
+        value: "false"
+      - key: EXTERNAL_LLM_URL
+        value: https://api.groq.com/openai/v1
+      - key: EXTERNAL_LLM_MODEL
+        value: llama-3.1-8b-instant
+      - key: EXTERNAL_LLM_API_KEY
+        sync: false # Groq API key
