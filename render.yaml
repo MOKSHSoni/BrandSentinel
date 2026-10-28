@@ -23,6 +23,6 @@ services:
       - key: EXTERNAL_LLM_URL
         value: https://api.groq.com/openai/v1
       - key: EXTERNAL_LLM_MODEL
-        value: llama-3.1-8b-instant
+        value: openai/gpt-oss-20b
       - key: EXTERNAL_LLM_API_KEY
         sync: false # Groq API key

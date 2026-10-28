@@ -28,7 +28,7 @@ Tables are created and the Nimbus Pay demo brand is seeded on the API's first st
 
 ## 2. AI key: Groq
 
-Create an API key at <https://console.groq.com/keys>. The default model is `llama-3.1-8b-instant`.
+Create an API key at <https://console.groq.com/keys>. The default model is `openai/gpt-oss-20b` (Groq accounts do not all have the Llama models).
 If Groq has retired it, choose any current model from their list and set `EXTERNAL_LLM_MODEL` to its name.
 
 ## 3. API: Render
