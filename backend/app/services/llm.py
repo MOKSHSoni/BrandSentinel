@@ -145,7 +145,11 @@ class AIContext:
                      latency_ms=int((time.time() - t0) * 1000))
             return parsed
         except (httpx.HTTPError, ValueError, KeyError, ValidationError) as e:
-            msg = f"{purpose}: {type(e).__name__}: {str(e)[:200]}"
+            detail = str(e)[:200]
+            if isinstance(e, httpx.HTTPStatusError):
+                # The provider's own error body says why (unknown model, quota, terms not accepted…).
+                detail = f"HTTP {e.response.status_code}: {e.response.text[:300]}"
+            msg = f"{purpose}: {type(e).__name__}: {detail}"
             self.errors.append(msg)
             self.log(purpose=purpose, location=self.route.location, model=model, tier=self.tier,
                      masked=self.masker.masked_fields if self.route.mask else [], ok=False, error=msg,
