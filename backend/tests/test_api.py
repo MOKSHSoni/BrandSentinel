@@ -308,3 +308,29 @@ def test_seed_starts_with_one_real_blast_radius_example(client):
     f = next(x for x in client.get(f"/api/drafts/{blog['id']}", headers=meera).json()["version"]["findings"]
              if x["outcome"] == "contradicted")
     assert f["fact"]["label"] == "F-13 v2" and f["suggestion"] == "12,000 merchants"
+
+
+def test_reset_restores_seed_in_one_transaction(client, monkeypatch):
+    rahul, priya = login(client, "rahul"), login(client, "priya")
+    create(client, priya, text="Trusted by 50,000 customers.")
+    assert len(client.get("/api/drafts", headers=rahul).json()) == 4
+
+    # A reset that fails part-way leaves the existing data untouched.
+    import app.seed as seed_module
+
+    def broken_seed(db, with_drafts=True):
+        raise RuntimeError("simulated crash mid-reset")
+
+    monkeypatch.setattr(seed_module, "seed", broken_seed)
+    r = client.post("/api/admin/reset", headers=rahul)
+    assert r.status_code == 500 and "unchanged" in r.json()["detail"]
+    assert len(client.get("/api/drafts", headers=rahul).json()) == 4
+    monkeypatch.undo()
+
+    # A real reset restores exactly the seeded state, and the existing login still works.
+    assert client.post("/api/admin/reset", headers=rahul).json() == {"ok": True}
+    drafts = client.get("/api/drafts", headers=rahul).json()
+    assert sorted(d["title"] for d in drafts) == ["Diwali festive email", "Instagram caption: city launch",
+                                                   "Merchant onboarding blog intro"]
+    assert len(client.get("/api/blast-radius", headers=rahul).json()["events"]) == 1
+    assert client.get("/api/auth/me", headers=rahul).json()["email"] == "rahul@nimbuspay.example"

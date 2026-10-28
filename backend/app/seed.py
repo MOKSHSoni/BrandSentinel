@@ -6,7 +6,7 @@ import os
 from datetime import date
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from .db import Base
@@ -258,10 +258,20 @@ def load_eval_results(db: Session) -> None:
         db.add(EvalRun(mode="pipeline_rules", results=evaluation.run("pipeline_rules", facts, rules)))
 
 
-def reset(db: Session, engine) -> None:
-    db.close()
-    Base.metadata.drop_all(engine)
-    Base.metadata.create_all(engine)
+def reset(db: Session) -> None:
+    """Empty every table and re-seed in one transaction, so an interrupted reset changes nothing.
+
+    Tables are never dropped: a request arriving mid-reset waits for the transaction instead of failing.
+    """
+    Base.metadata.create_all(db.get_bind())  # also repairs a database whose tables are missing
+    tables = list(reversed(Base.metadata.sorted_tables))
+    if db.get_bind().dialect.name == "postgresql":
+        names = ", ".join(t.name for t in tables)
+        db.execute(text(f"TRUNCATE {names} RESTART IDENTITY CASCADE"))
+    else:
+        for t in tables:
+            db.execute(t.delete())
+    seed(db)  # commits once at the end
 
 
 def ensure_seeded(db: Session) -> bool:

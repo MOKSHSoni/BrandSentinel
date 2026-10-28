@@ -6,9 +6,9 @@ from sqlalchemy.orm import Session
 
 from ..auth import current_user, issue_token, require
 from ..config import settings
-from ..db import engine, get_db
+from ..db import get_db
 from ..models import TIERS, AuditLog, EvalRun, Finding, ModelCall, Rule, User
-from ..seed import SAMPLES, reset, seed, verify_password
+from ..seed import SAMPLES, reset, verify_password
 from ..serializers import user_out
 from ..services import audit, llm
 from ..services.intake import make_docx
@@ -128,12 +128,9 @@ def put_settings(body: SettingsBody, user: User = Depends(require("admin")), db:
 
 @router.post("/admin/reset")
 def reset_demo(user: User = Depends(require("admin")), db: Session = Depends(get_db)):
-    reset(db, engine)
-    from ..db import SessionLocal
-
-    fresh = SessionLocal()
     try:
-        seed(fresh)
-    finally:
-        fresh.close()
+        reset(db)
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, "Reset failed; the demo data was left unchanged.")
     return {"ok": True}
