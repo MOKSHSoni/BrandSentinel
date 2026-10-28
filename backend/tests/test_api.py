@@ -157,7 +157,7 @@ def test_permissions(client):
     priya_draft = next(d for d in client.get("/api/drafts", headers=priya).json())
     assert client.get(f"/api/drafts/{priya_draft['id']}", headers=arjun).status_code == 403
     assert all(d["created_by"]["email"] == "arjun@bluefin.example" for d in client.get("/api/drafts", headers=arjun).json())
-    assert len(client.get("/api/drafts", headers=meera).json()) == 3
+    assert len(client.get("/api/drafts", headers=meera).json()) == 5
     assert client.post("/api/facts", headers=meera, json={}).status_code == 403
     assert client.put("/api/settings", headers=priya, json={"external_tiers": ["internal"]}).status_code == 403
     # Agencies see only public facts and never their source documents.
@@ -191,7 +191,8 @@ def test_retract_and_rule_change_flag_signoffs(client):
 
     f18 = next(g for g in client.get("/api/facts", headers=rahul).json() if g["key"] == "F-18")["current"]
     r = client.post(f"/api/facts/{f18['id']}/retract", headers=rahul, json={"note": "Coverage report was wrong"})
-    assert [d["title"] for d in r.json()["blast"]["affected"]["drafts"]] == ["Instagram caption: city launch"]
+    assert sorted(d["title"] for d in r.json()["blast"]["affected"]["drafts"]) == [
+        "Instagram caption: city launch", "Website hero banner"]
 
 
 def test_create_fact_and_validation(client):
@@ -313,7 +314,7 @@ def test_seed_starts_with_one_real_blast_radius_example(client):
 def test_reset_restores_seed_in_one_transaction(client, monkeypatch):
     rahul, priya = login(client, "rahul"), login(client, "priya")
     create(client, priya, text="Trusted by 50,000 customers.")
-    assert len(client.get("/api/drafts", headers=rahul).json()) == 4
+    assert len(client.get("/api/drafts", headers=rahul).json()) == 6
 
     # A reset that fails part-way leaves the existing data untouched.
     import app.seed as seed_module
@@ -324,13 +325,29 @@ def test_reset_restores_seed_in_one_transaction(client, monkeypatch):
     monkeypatch.setattr(seed_module, "seed", broken_seed)
     r = client.post("/api/admin/reset", headers=rahul)
     assert r.status_code == 500 and "unchanged" in r.json()["detail"]
-    assert len(client.get("/api/drafts", headers=rahul).json()) == 4
+    assert len(client.get("/api/drafts", headers=rahul).json()) == 6
     monkeypatch.undo()
 
     # A real reset restores exactly the seeded state, and the existing login still works.
     assert client.post("/api/admin/reset", headers=rahul).json() == {"ok": True}
     drafts = client.get("/api/drafts", headers=rahul).json()
     assert sorted(d["title"] for d in drafts) == ["Diwali festive email", "Instagram caption: city launch",
-                                                   "Merchant onboarding blog intro"]
+                                                   "Instagram story: Diwali offer", "Merchant onboarding blog intro",
+                                                   "Website hero banner"]
     assert len(client.get("/api/blast-radius", headers=rahul).json()["events"]) == 1
     assert client.get("/api/auth/me", headers=rahul).json()["email"] == "rahul@nimbuspay.example"
+
+
+def test_each_creator_starts_with_detected_issues(client):
+    for who, title, expected in [
+        ("priya", "Website hero banner", {"contradicted": 3, "violation": 1}),
+        ("arjun", "Instagram story: Diwali offer", {"contradicted": 1, "unverified": 2, "violation": 3, "suggestion": 1}),
+    ]:
+        h = login(client, who)
+        d = next(x for x in client.get("/api/drafts", headers=h).json() if x["title"] == title)
+        assert d["counts"]["open_blocking"] > 0
+        found = {}
+        for f in get(client, h, d["id"])["version"]["findings"]:
+            if f["outcome"] != "supported":
+                found[f["outcome"]] = found.get(f["outcome"], 0) + 1
+        assert found == expected, (who, found)

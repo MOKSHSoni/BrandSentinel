@@ -169,6 +169,16 @@ SEED_DRAFTS = [
          goal="Get merchants to sign up", sign_off=True,
          content="Join 10,000 merchants who accept UPI payments with Nimbus Pay. Settlements are simple, and "
                  "our support team is here when you need it."),
+    # Drafts with open findings, so each creator signs in to real detections. Neither cites F-12, so the
+    # four-step demo's F-12 change still flags exactly the drafts the guide describes.
+    dict(title="Website hero banner", channel="Website", author="priya@nimbuspay.example",
+         goal="Show that Nimbus Pay is fast and widely available", sign_off=False,
+         content="Nimbus Pay is rated 4.8 on Google Play. We now serve 500 cities, and payments go through in "
+                 "under 0.5 seconds every time you pay with upi."),
+    dict(title="Instagram story: Diwali offer", channel="Instagram", author="arjun@bluefin.example",
+         goal="Get existing users to try cashback", sign_off=False,
+         content="Last chance! Get ₹150 cashback with Nimbus pay this Diwali. India's most trusted payments app, "
+                 "2x faster than ZipWallet."),
 ]
 
 SAMPLES = {
