@@ -53,7 +53,8 @@ All of the plan's Core MVP is built and tested end to end. Parts of the Next tie
 
 **Blast radius.** Every reviewed version stores the fact versions it relied on (`citations`). Superseding F-12 v3
 looks up that table. It flags the latest version of every affected draft for re-review and marks each sign-off
-that relied on F-12 v3 as needing renewal. In the tests this takes about 10 ms for 500 stored drafts.
+that relied on F-12 v3 as needing renewal. A fact change that flags 500 stored drafts takes about 0.7 s in the
+tests (657 ms on SQLite, 668 ms on PostgreSQL; target under 2 s). The 3-draft demo takes about 9 ms.
 
 ## Run locally (Windows, macOS or Linux)
 
