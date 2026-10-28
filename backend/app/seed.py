@@ -58,10 +58,10 @@ FACTS = [
          source_detail="Finance › Q3 business report v3, slide 4 (board-approved 28 Sep 2026)", status="approved"),
     dict(key="F-13", version=1, kind="count", metric="Registered merchants", unit="merchants", scope="India",
          aliases=["merchants", "merchant partners", "registered merchants", "merchant outlets", "stores", "shops"],
-         ambiguous_terms=["businesses", "partners"], value_num=12_000, value_text="12,000",
-         statement="Accepted at 12,000 registered merchants across India", effective_date=date(2026, 9, 1),
-         valid_until=date(2027, 3, 31), source="Merchant operations dashboard export", source_version="2026-09",
-         source_detail="Ops › merchant registry export 2026-09-01"),
+         ambiguous_terms=["businesses", "partners"], value_num=10_000, value_text="10,000",
+         statement="Accepted at 10,000 registered merchants across India", effective_date=date(2026, 6, 1),
+         valid_until=date(2027, 3, 31), source="Merchant operations dashboard export", source_version="2026-06",
+         source_detail="Ops › merchant registry export 2026-06-01"),
     dict(key="F-14", version=1, kind="percentage", metric="Payment success rate", unit="%", scope="India",
          aliases=["payment success rate", "success rate", "successful payments", "payments succeed",
                   "transaction success rate", "of payments go through"],
@@ -167,7 +167,7 @@ SEED_DRAFTS = [
                  "Rated 4.6 on Google Play."),
     dict(title="Merchant onboarding blog intro", channel="Blog", author="priya@nimbuspay.example",
          goal="Get merchants to sign up", sign_off=True,
-         content="Join over 12,000 merchants who accept UPI payments with Nimbus Pay. Settlements are simple, and "
+         content="Join 10,000 merchants who accept UPI payments with Nimbus Pay. Settlements are simple, and "
                  "our support team is here when you need it."),
 ]
 
@@ -228,6 +228,16 @@ def seed(db: Session, with_drafts: bool = True) -> None:
             review.run_review(db, v, author, use_ai=False)
             if spec["sign_off"]:
                 governance.sign_off(db, d, manager, "Facts and wording checked.", {})
+
+    # A fact change that has already happened, so blast radius has a real example from the start: the merchant
+    # blog was signed off against F-13 v1 (10,000) and is now flagged against F-13 v2 (12,000).
+    governance.supersede_fact(
+        db, rows[("F-13", 1)],
+        {"value_num": 12_000, "effective_date": date(2026, 10, 20), "source_version": "2026-10",
+         "source_detail": "Ops › merchant registry export 2026-10-20"},
+        admin, "October merchant registry export",
+    )
+    if with_drafts:
         load_eval_results(db)
     db.commit()
 

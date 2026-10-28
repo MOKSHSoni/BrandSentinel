@@ -79,7 +79,9 @@ echo NEXT_PUBLIC_API_URL=http://localhost:8000 > .env.local
 npm run dev
 ```
 
-The first start creates the tables and seeds Nimbus Pay: 4 users, 12 facts (14 versions), 7 rules and 3 stored drafts.
+The first start creates the tables and seeds Nimbus Pay: 4 users, 12 facts (15 versions), 7 rules and 3 stored drafts. One fact change has
+already happened (F-13 merchants 10,000 → 12,000), so the merchant blog starts flagged by blast radius and its
+sign-off needs renewal. The four-step demo then makes a second change of its own (F-12).
 Open <http://localhost:3000>, pick a person and follow the four-step guide on the dashboard.
 
 | Person | Role | Can do |

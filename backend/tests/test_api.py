@@ -38,7 +38,7 @@ def test_full_demo_journey(client):
     assert by_outcome["contradicted"]["quote"] == "50,000 customers"
     assert by_outcome["contradicted"]["fact"]["label"] == "F-12 v3"
     assert by_outcome["unverified"]["quote"] == "India's #1 payments app"
-    assert by_outcome["supported"]["fact"]["label"] == "F-13 v1"
+    assert by_outcome["supported"]["fact"]["label"] == "F-13 v2"
     # Agencies see the fact ID but not the internal document behind it.
     assert "source_detail" not in by_outcome["contradicted"]["fact"]
 
@@ -65,7 +65,7 @@ def test_full_demo_journey(client):
     r = client.post(f"/api/drafts/{did}/signoff", headers=meera, json={"comment": "Approved."})
     assert r.status_code == 200, r.text
     s = r.json()
-    assert s["version_number"] == 2 and s["rulebook_version"] == 1 and s["fact_labels"] == ["F-12 v3", "F-13 v1"]
+    assert s["version_number"] == 2 and s["rulebook_version"] == 1 and s["fact_labels"] == ["F-12 v3", "F-13 v2"]
     assert s["content_hash"] == v2["content_hash"]
 
     # 4. Change a fact: blast radius flags this post and the two seeded drafts citing F-12 v3.
@@ -87,9 +87,9 @@ def test_full_demo_journey(client):
     d = get(client, meera, did)
     assert d["status"] == "needs_renewal" and d["needs_rereview"]
     assert d["signoffs"][0]["status"] == "needs_renewal"
-    # The merchant blog cites only F-13, so it is untouched.
+    # The merchant blog cites only F-13, so the F-12 change does not touch it (its flag is the seeded F-13 one).
     blog = next(x for x in client.get("/api/drafts", headers=meera).json() if x["title"].startswith("Merchant"))
-    assert blog["status"] == "signed_off" and not blog["needs_rereview"]
+    assert "F-13" in blog["rereview_reason"] and "F-12" not in blog["rereview_reason"]
 
     # Renewal: sign-off is refused until re-review; the re-review now contradicts 80,000.
     assert client.post(f"/api/drafts/{did}/signoff", headers=meera, json={}).status_code == 400
@@ -186,11 +186,12 @@ def test_retract_and_rule_change_flag_signoffs(client):
     r = client.put(f"/api/rules/{r01['id']}", headers=rahul, json={"severity": "critical", "note": "Brand name is critical"})
     assert r.json()["rulebook_version"] == 2
     flagged = client.get("/api/blast-radius", headers=meera).json()
-    assert len(flagged["signoffs_needing_renewal"]) == 2  # both seeded sign-offs predate rulebook v2
+    # Diwali e-mail (flagged by the rulebook change) and the merchant blog (flagged by the seeded F-13 change).
+    assert len(flagged["signoffs_needing_renewal"]) == 2
 
-    f13 = next(g for g in client.get("/api/facts", headers=rahul).json() if g["key"] == "F-13")["current"]
-    r = client.post(f"/api/facts/{f13['id']}/retract", headers=rahul, json={"note": "Registry export was wrong"})
-    assert [d["title"] for d in r.json()["blast"]["affected"]["drafts"]] == ["Merchant onboarding blog intro"]
+    f18 = next(g for g in client.get("/api/facts", headers=rahul).json() if g["key"] == "F-18")["current"]
+    r = client.post(f"/api/facts/{f18['id']}/retract", headers=rahul, json={"note": "Coverage report was wrong"})
+    assert [d["title"] for d in r.json()["blast"]["affected"]["drafts"]] == ["Instagram caption: city launch"]
 
 
 def test_create_fact_and_validation(client):
@@ -289,3 +290,21 @@ def test_health_samples_and_eval(client):
     r = client.post("/api/eval/run", headers=rahul).json()
     assert r["drafts"] == 50 and r["severity"]["critical"]["recall"] >= 0.9
     assert "pipeline_rules" in client.get("/api/eval", headers=rahul).json()
+
+
+def test_seed_starts_with_one_real_blast_radius_example(client):
+    meera = login(client, "meera")
+    overview = client.get("/api/blast-radius", headers=meera).json()
+    assert len(overview["events"]) == 1
+    ev = overview["events"][0]
+    assert ev["old_fact"]["label"] == "F-13 v1" and ev["new_fact"]["label"] == "F-13 v2"
+    assert [d["title"] for d in ev["affected"]["drafts"]] == ["Merchant onboarding blog intro"]
+    assert len(ev["affected"]["signoffs"]) == 1
+    assert [d["title"] for d in overview["flagged_drafts"]] == ["Merchant onboarding blog intro"]
+    # Re-review explains the flag: 10,000 is now contradicted by F-13 v2, and the fix offers 12,000.
+    blog = next(d for d in client.get("/api/drafts", headers=meera).json() if d["title"].startswith("Merchant"))
+    assert blog["status"] == "needs_renewal"
+    client.post(f"/api/drafts/{blog['id']}/review", headers=meera)
+    f = next(x for x in client.get(f"/api/drafts/{blog['id']}", headers=meera).json()["version"]["findings"]
+             if x["outcome"] == "contradicted")
+    assert f["fact"]["label"] == "F-13 v2" and f["suggestion"] == "12,000 merchants"
