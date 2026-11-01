@@ -8,9 +8,29 @@ import { useAuth } from "@/lib/auth";
 import type { DraftDetail, Finding } from "@/lib/types";
 import FindingCard from "@/components/FindingCard";
 import HighlightedText from "@/components/HighlightedText";
+import ImageAssets from "@/components/ImageAssets";
 import { Button, Card, ErrorBox, Spinner, StatusChip, TierChip, fmtDate } from "@/components/ui";
 
 type Tab = "signoff" | "comments" | "audit";
+
+/** The same non-overlapping, end-first application the server uses when "Apply accepted fixes" is pressed. */
+function previewWithFixes(content: string, findings: Finding[]): string | null {
+  const fixes: [number, number, string][] = [];
+  for (const f of findings) {
+    const cc = f.correction_check as (Finding["correction_check"] & { fix_start?: number; fix_end?: number; edited?: { text: string; fix_start: number; fix_end: number } }) | null;
+    if (f.status === "accepted" && f.suggestion !== null && cc) fixes.push([cc.fix_start ?? f.start, cc.fix_end ?? f.end, f.suggestion]);
+    else if (f.status === "edited" && cc?.edited) fixes.push([cc.edited.fix_start, cc.edited.fix_end, cc.edited.text]);
+  }
+  if (!fixes.length) return null;
+  const taken: [number, number][] = [];
+  let text = content;
+  for (const [s, e, r] of fixes.sort((a, b) => b[0] - a[0])) {
+    if (taken.some(([a, b]) => (s < b && a < e) || (s === e && a <= s && s <= b))) continue;
+    text = text.slice(0, s) + r + text.slice(e);
+    taken.push([s, e]);
+  }
+  return text.replace(/[ 	]{2,}/g, " ");
+}
 
 function DiffView({ draftId, a, b }: { draftId: number; a: number; b: number }) {
   const [ops, setOps] = useState<{ op: string; text: string }[] | null>(null);
@@ -249,6 +269,16 @@ export default function DraftPage() {
               <HighlightedText content={v.content} findings={v.findings} selected={selected} onSelect={select} />
             )}
           </Card>
+          {canEdit && accepted > 0 && previewWithFixes(v.content, v.findings) !== null && (
+            <Card className="border-emerald-200 p-4">
+              <p className="mb-1 text-xs font-semibold text-emerald-800">
+                Preview of v{d.versions.length + 1} with all {accepted} accepted fix{accepted > 1 ? "es" : ""} applied together
+              </p>
+              <p className="whitespace-pre-wrap text-sm leading-7 text-slate-800">{previewWithFixes(v.content, v.findings)}</p>
+              <p className="mt-1 text-[11px] text-slate-500">The new version is reviewed again in full when you apply it.</p>
+            </Card>
+          )}
+          {v.assets?.length > 0 && <ImageAssets assets={v.assets} findings={v.findings} />}
           <Card className="p-4 text-xs text-slate-600">
             <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2">
               <div>Version <b>v{v.number}</b> · {v.change_note}{v.source_filename && ` (${v.source_filename})`} · {v.created_by} · {fmtDate(v.created_at, true)}</div>

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { api } from "@/lib/api";
 import type { CheckResult, Fact, Finding } from "@/lib/types";
+import EvidenceChain from "./EvidenceChain";
 import { Button, OutcomeChip, SeverityChip, SourceChip, StatusChip, fmtDate } from "./ui";
 
 const CHECK_LABEL: Record<string, string> = {
@@ -14,6 +15,9 @@ const CHECK_LABEL: Record<string, string> = {
   tone: "Tone",
   confidential: "Confidentiality",
   injection: "Injected instructions",
+  accessibility: "Accessibility",
+  palette: "Brand palette",
+  image: "Image text",
 };
 
 function FactBox({ fact, title }: { fact: Fact; title?: string }) {
@@ -85,6 +89,7 @@ export default function FindingCard({
   }
 
   const resolved = ["accepted", "edited", "dismissed", "overridden"].includes(f.status);
+  const inImage = Boolean(f.meta?.in_image || f.meta?.image);
 
   return (
     <div
@@ -103,6 +108,14 @@ export default function FindingCard({
         </span>
       </div>
       <blockquote className="mb-2 border-l-2 border-slate-300 pl-2 text-slate-800">“{f.quote}”</blockquote>
+      {f.meta?.in_image ? (
+        <p className="mb-2 inline-block rounded bg-indigo-50 px-1.5 py-0.5 text-[11px] font-medium text-indigo-700">Read from image {String(f.meta.in_image)} by OCR</p>
+      ) : null}
+      {f.fact && !f.evidence_current && (
+        <p className="mb-2 rounded bg-amber-50 px-2 py-1 text-[11px] text-amber-900">
+          Evidence out of date: {f.fact.label} is no longer the approved version. Re-run the review.
+        </p>
+      )}
       <p className="font-medium text-slate-900">{f.message}</p>
       {f.explanation && <p className="mt-1 text-xs text-slate-600">{f.explanation}</p>}
 
@@ -128,7 +141,7 @@ export default function FindingCard({
         <div className="mt-3 rounded-md border border-indigo-100 bg-indigo-50/50 p-2.5">
           {f.suggestion !== null && cc.after !== undefined ? (
             <>
-              <p className="mb-1 text-xs font-semibold text-indigo-900">Suggested fix</p>
+              <p className="mb-1 text-xs font-semibold text-indigo-900">Suggested fix <span className="font-normal text-slate-500">(this fix on its own)</span></p>
               <p className="text-xs text-slate-500 line-through decoration-red-400">{cc.before}</p>
               <p className="text-xs font-medium text-slate-900">{cc.after}</p>
             </>
@@ -159,6 +172,7 @@ export default function FindingCard({
               <span>
                 <StatusChip status={f.status === "overridden" ? "superseded" : "done"} />{" "}
                 <span className="font-medium capitalize text-slate-700">{f.status}</span>
+                {f.decided_by && <span className="text-slate-500"> by {f.decided_by}</span>}
                 {f.decision_reason && <span className="text-slate-500">: {f.decision_reason}</span>}
               </span>
               {editable && f.status !== "overridden" && (
@@ -168,7 +182,7 @@ export default function FindingCard({
           ) : editable && mode === "idle" ? (
             <div className="flex flex-wrap gap-2">
               {f.suggestion !== null && <Button variant="success" className="text-xs" disabled={busy} onClick={() => decide("accept")}>Accept fix</Button>}
-              <Button variant="secondary" className="text-xs" onClick={() => { setText(f.suggestion ?? f.quote); setMode("edit"); }}>Edit</Button>
+              {!inImage && <Button variant="secondary" className="text-xs" onClick={() => { setText(f.suggestion ?? f.quote); setMode("edit"); }}>Edit</Button>}
               <Button variant="ghost" className="text-xs" onClick={() => setMode("dismiss")}>Dismiss…</Button>
             </div>
           ) : null}
@@ -194,6 +208,7 @@ export default function FindingCard({
           {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
         </div>
       )}
+      <EvidenceChain findingId={f.id} />
     </div>
   );
 }

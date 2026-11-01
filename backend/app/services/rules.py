@@ -89,13 +89,14 @@ def check_disclaimer(text: str, rule: Rule) -> list[RuleHit]:
     if not m or present.search(text):
         return []
     sent = sentence_at(text, m.start())
-    sentence = text[sent.start : sent.end]
-    stripped = sentence.rstrip()
-    fixed = stripped + ("" if stripped.endswith((".", "!", "?")) else ".") + " " + cfg["required"] + "."
+    stripped = text[sent.start : sent.end].rstrip()
+    end = sent.start + len(stripped)
+    # A pure insertion after the sentence, so the correction check only looks at the inserted words.
+    insertion = ("" if stripped.endswith((".", "!", "?")) else ".") + " " + cfg["required"] + "."
     return [RuleHit("disclaimer", rule, m.start(), m.end(),
                     f"“{m.group(0)}” needs the disclaimer “{cfg['required']}”.",
                     rule.guideline, rule.severity, rule.blocking,
-                    replacement=fixed, fix_start=sent.start, fix_end=sent.start + len(stripped))]
+                    replacement=insertion, fix_start=end, fix_end=end)]
 
 
 def check_tone(text: str, rule: Rule) -> list[RuleHit]:

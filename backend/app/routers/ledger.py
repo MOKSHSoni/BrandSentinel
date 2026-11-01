@@ -9,7 +9,7 @@ from ..auth import current_user, require
 from ..db import get_db
 from ..models import TIERS, BlastEvent, Draft, Fact, Rule, Rulebook, SignOff, User
 from ..serializers import draft_summary, fact_out, rule_out, signoff_out
-from ..services import governance
+from ..services import audit, governance, simulate
 from ..services.review import current_rulebook
 
 router = APIRouter(prefix="/api", tags=["ledger"])
@@ -52,6 +52,8 @@ class FactBody(BaseModel):
 class ChangeBody(BaseModel):
     changes: FactBody
     note: str = ""
+    expected_draft_ids: list[int] | None = None  # from the simulation the admin looked at
+    retract: bool = False  # simulate a retraction instead of a new version
 
 
 def _validate(body: FactBody) -> None:
@@ -94,6 +96,18 @@ def blast_preview(fact_id: int, user: User = Depends(require("admin", "manager")
     return governance.preview(db, _fact(db, fact_id))
 
 
+@router.post("/facts/{fact_id}/simulate")
+def simulate_fact_change(fact_id: int, body: ChangeBody, user: User = Depends(require("admin", "manager")),
+                         db: Session = Depends(get_db)):
+    """Brand Impact Simulator: re-verify every affected claim against the proposal. Changes nothing."""
+    _validate(body.changes)
+    try:
+        return simulate.simulate_fact(db, _fact(db, fact_id), body.changes.model_dump(exclude_none=True), user,
+                                      retract=body.retract)
+    except governance.GovernanceError as e:
+        raise HTTPException(400, str(e))
+
+
 @router.post("/facts/{fact_id}/supersede")
 def supersede(fact_id: int, body: ChangeBody, user: User = Depends(require("admin")), db: Session = Depends(get_db)):
     _validate(body.changes)
@@ -103,11 +117,38 @@ def supersede(fact_id: int, body: ChangeBody, user: User = Depends(require("admi
     except governance.GovernanceError as e:
         raise HTTPException(400, str(e))
     db.commit()
-    return {"fact": fact_out(new, user), "blast": blast_out(ev)}
+    out = {"fact": fact_out(new, user), "blast": blast_out(ev)}
+    if body.expected_draft_ids is not None:
+        # The impact is recalculated at commit time; say so if it differs from what the admin previewed.
+        actual = sorted(d["draft_id"] for d in ev.affected["drafts"])
+        out["changed_since_preview"] = actual != sorted(body.expected_draft_ids)
+    return out
+
+
+class SensitivityBody(BaseModel):
+    sensitivity: str
+    note: str = ""
+
+
+@router.patch("/facts/{fact_id}/sensitivity")
+def set_fact_sensitivity(fact_id: int, body: SensitivityBody, user: User = Depends(require("admin")),
+                         db: Session = Depends(get_db)):
+    """Reclassify a fact (all its versions). The value is unchanged, so no new version and no blast radius."""
+    if body.sensitivity not in TIERS:
+        raise HTTPException(400, f"Sensitivity must be one of {', '.join(TIERS)}.")
+    f = _fact(db, fact_id)
+    before = f.sensitivity
+    for v in db.scalars(select(Fact).where(Fact.key == f.key)):
+        v.sensitivity = body.sensitivity
+    audit.record(db, user, "fact.sensitivity", "fact", f.id,
+                 f"{f.key} reclassified from {before} to {body.sensitivity}" + (f": {body.note}" if body.note else "."))
+    db.commit()
+    return fact_out(f, user)
 
 
 class NoteBody(BaseModel):
     note: str
+    expected_draft_ids: list[int] | None = None
 
 
 @router.post("/facts/{fact_id}/retract")
@@ -119,7 +160,10 @@ def retract(fact_id: int, body: NoteBody, user: User = Depends(require("admin"))
     except governance.GovernanceError as e:
         raise HTTPException(400, str(e))
     db.commit()
-    return {"blast": blast_out(ev)}
+    out = {"blast": blast_out(ev)}
+    if body.expected_draft_ids is not None:
+        out["changed_since_preview"] = sorted(d["draft_id"] for d in ev.affected["drafts"]) != sorted(body.expected_draft_ids)
+    return out
 
 
 def blast_out(ev: BlastEvent) -> dict:
@@ -162,15 +206,47 @@ class RuleBody(BaseModel):
     note: str = ""
 
 
+@router.post("/rules/{rule_id}/simulate")
+def simulate_rule_change(rule_id: int, body: "RuleBody", user: User = Depends(require("admin", "manager")),
+                         db: Session = Depends(get_db)):
+    r = db.get(Rule, rule_id)
+    if r is None:
+        raise HTTPException(404, "Rule not found.")
+    _validate_rule(body)
+    return simulate.simulate_rule(db, r, body.model_dump(exclude={"note"}, exclude_none=True))
+
+
+@router.patch("/rules/{rule_id}/sensitivity")
+def set_rule_sensitivity(rule_id: int, body: SensitivityBody, user: User = Depends(require("admin")),
+                         db: Session = Depends(get_db)):
+    """Reclassify a rule. Its checks are unchanged, so the rulebook version and sign-offs are not affected."""
+    if body.sensitivity not in TIERS:
+        raise HTTPException(400, f"Sensitivity must be one of {', '.join(TIERS)}.")
+    r = db.get(Rule, rule_id)
+    if r is None:
+        raise HTTPException(404, "Rule not found.")
+    before, r.sensitivity = r.sensitivity, body.sensitivity
+    audit.record(db, user, "rule.sensitivity", "rule", r.id,
+                 f"{r.key} reclassified from {before} to {body.sensitivity}" + (f": {body.note}" if body.note else "."))
+    db.commit()
+    return rule_out(r, user)
+
+
+def _validate_rule(body: "RuleBody") -> None:
+    if body.severity and body.severity not in ("critical", "major", "minor"):
+        raise HTTPException(400, "Severity must be critical, major or minor.")
+    if body.status and body.status not in ("active", "retired"):
+        raise HTTPException(400, "Status must be active or retired.")
+    if body.sensitivity and body.sensitivity not in TIERS:
+        raise HTTPException(400, f"Sensitivity must be one of {', '.join(TIERS)}.")
+
+
 @router.put("/rules/{rule_id}")
 def update_rule(rule_id: int, body: RuleBody, user: User = Depends(require("admin")), db: Session = Depends(get_db)):
     r = db.get(Rule, rule_id)
     if r is None:
         raise HTTPException(404, "Rule not found.")
-    if body.severity and body.severity not in ("critical", "major", "minor"):
-        raise HTTPException(400, "Severity must be critical, major or minor.")
-    if body.status and body.status not in ("active", "retired"):
-        raise HTTPException(400, "Status must be active or retired.")
+    _validate_rule(body)
     rb = governance.change_rule(db, r, body.model_dump(exclude={"note"}), user, body.note)
     db.commit()
     return {"rule": rule_out(r, user), "rulebook_version": rb.version}

@@ -129,6 +129,9 @@ class DraftVersion(Base):
     review_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     effective_tier: Mapped[str] = mapped_column(String(20), default="public")
     ai_status: Mapped[str] = mapped_column(Text, default="")
+    # Images found in the upload (DOCX pictures, uploaded images, web-page images): alt text, OCR lines with
+    # boxes, measured text contrast, dominant colours and a small preview. See services/images.py.
+    assets: Mapped[list | None] = mapped_column(JSON, default=list, nullable=True)
 
     draft: Mapped[Draft] = relationship(back_populates="versions")
     created_by: Mapped[User] = relationship()
@@ -159,6 +162,7 @@ class Finding(Base):
     correction_check: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     source: Mapped[str] = mapped_column(String(20), default="rule")  # rule | local_model | external_model
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    meta: Mapped[dict | None] = mapped_column(JSON, default=dict, nullable=True)  # e.g. {"in_image": 1}
     status: Mapped[str] = mapped_column(String(20), default="open")
     # open | info | accepted | edited | dismissed | overridden
     decision_reason: Mapped[str] = mapped_column(Text, default="")
@@ -168,6 +172,7 @@ class Finding(Base):
     version: Mapped[DraftVersion] = relationship(back_populates="findings")
     fact: Mapped[Fact | None] = relationship()
     rule: Mapped[Rule | None] = relationship()
+    decided_by: Mapped[User | None] = relationship(foreign_keys=[decided_by_id])
 
 
 class Citation(Base):

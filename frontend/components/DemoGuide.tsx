@@ -30,9 +30,17 @@ const STEPS = [
     who: "rahul@nimbuspay.example",
     as: "Rahul (brand admin)",
     title: "4. Change a fact",
-    body: "Truth Ledger → F-12 → “New version” → 95,000. Blast radius lists every draft and sign-off that relied on F-12 v3.",
+    body: "Truth Ledger → F-12 → “Change or retract…” → 95,000 → Preview impact. See which claims would flip before you confirm; then blast radius flags every affected draft and sign-off.",
     go: "/ledger?fact=F-12",
   },
+];
+
+const MORE = [
+  { label: "Claims inside an image (OCR, contrast, palette)", who: "arjun@bluefin.example", go: "/drafts/new", hint: "Image samples → festive_banner.png → Use file → Check draft" },
+  { label: "Evidence chain on any finding", who: "priya@nimbuspay.example", go: "/", hint: "Open “Website hero banner”, then “Evidence chain” on a finding" },
+  { label: "Governance Drift Radar", who: "meera@nimbuspay.example", go: "/radar", hint: "Recurring issues, disagreement, open risk and fact freshness" },
+  { label: "Preview a rule change", who: "rahul@nimbuspay.example", go: "/rules?rule=R-01", hint: "Edit rule → Preview impact before saving" },
+  { label: "Check a web page", who: "priya@nimbuspay.example", go: "/drafts/new", hint: "Content → Check a web page" },
 ];
 
 export default function DemoGuide() {
@@ -83,6 +91,17 @@ export default function DemoGuide() {
           );
         })}
       </ol>
+      <div className="mt-4 border-t border-indigo-100 pt-3">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Also try</p>
+        <div className="flex flex-wrap gap-2 text-xs">
+          {MORE.map((m) => (
+            <button key={m.label} onClick={async () => { if (user?.email !== m.who) await login(m.who); router.push(m.go); }}
+              className="rounded-full bg-white px-3 py-1 text-slate-700 ring-1 ring-slate-200 hover:ring-indigo-300" title={m.hint}>
+              {m.label}
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

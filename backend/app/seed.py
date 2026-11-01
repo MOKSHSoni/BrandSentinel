@@ -148,6 +148,15 @@ RULES = [
          config={"terms": ["act now", "hurry", "don't miss out", "don’t miss out", "last chance",
                            "before it's too late", "you'll regret", "limited time only", "once in a lifetime",
                            "mind-blowing", "insane", "crazy deal", "unbelievable"]}),
+    dict(key="R-08", kind="accessibility", name="Accessible images", severity="major", blocking=True,
+         sensitivity="public",
+         guideline="Every image needs alt text that describes it, and text inside images must meet WCAG 2.1 AA "
+                   "contrast: at least 4.5:1, or 3:1 for large text.",
+         config={"require_alt": True, "min_contrast": 4.5, "min_contrast_large": 3.0}),
+    dict(key="R-09", kind="palette", name="Brand palette", severity="minor", blocking=False, sensitivity="public",
+         guideline="Use the Nimbus Pay palette: Indigo #4F46E5, Navy #1E1B4B, Mint #10B981, Ink #0F172A and White.",
+         config={"colors": ["#4F46E5", "#1E1B4B", "#10B981", "#0F172A", "#FFFFFF", "#E0E7FF"], "tolerance": 48,
+                 "min_share": 0.08}),
     dict(key="R-07", kind="confidential_term", name="Unreleased codenames", severity="critical", blocking=True,
          sensitivity="restricted",
          guideline="Unreleased product names and codenames must not appear in drafts shared outside the core team.",
@@ -273,7 +282,10 @@ def reset(db: Session) -> None:
 
     Tables are never dropped: a request arriving mid-reset waits for the transaction instead of failing.
     """
+    from .db import ensure_columns
+
     Base.metadata.create_all(db.get_bind())  # also repairs a database whose tables are missing
+    ensure_columns(db.get_bind())
     tables = list(reversed(Base.metadata.sorted_tables))
     if db.get_bind().dialect.name == "postgresql":
         names = ", ".join(t.name for t in tables)

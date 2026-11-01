@@ -86,13 +86,22 @@ class Claim:
         return asdict(self)
 
 
+PLATFORM_SCOPES = {"Google Play", "App Store"}
+
+
 def find_scope(text: str, start: int, end: int) -> str | None:
+    """Scope from the claim's own clause; otherwise a region named elsewhere in the sentence
+    ("India's #1 app, trusted by 50,000 customers"). App-store scopes never carry over to other clauses:
+    "rated 4.6 on Google Play and serves 450 cities" is not a Google Play city count."""
     clause = clause_at(text, start, end)
+    m = SCOPE_RE.search(text, clause.start, clause.end)
+    if m:
+        return SCOPES[m.group(1).lower()]
     sent = sentence_at(text, start)
-    for span in (clause, sent):
-        m = SCOPE_RE.search(text, span.start, span.end)
-        if m:
-            return SCOPES[m.group(1).lower()]
+    for m in SCOPE_RE.finditer(text, sent.start, sent.end):
+        scope = SCOPES[m.group(1).lower()]
+        if scope not in PLATFORM_SCOPES:
+            return scope
     return None
 
 

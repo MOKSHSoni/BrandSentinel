@@ -74,6 +74,9 @@ export interface Finding {
   fact: Fact | null;
   rule: { id: number; key: string; name: string; version: number; guideline: string } | null;
   candidates: Fact[];
+  decided_by: string | null;
+  meta: { in_image?: number; image?: number; kind?: string; [k: string]: unknown };
+  evidence_current: boolean;
 }
 
 export interface VersionMeta {
@@ -96,6 +99,7 @@ export interface Version extends VersionMeta {
   content: string;
   findings: Finding[];
   citations: { fact: Fact; relation: string }[];
+  assets: ImageAsset[];
 }
 
 export interface SignOff {
@@ -180,4 +184,131 @@ export interface BlastEvent {
     reason: string;
   };
   elapsed_ms: number;
+}
+
+// ---------- Round 3 ----------
+
+export interface OcrLine {
+  text: string;
+  box: [number, number, number, number];
+  conf: number;
+  contrast: { ratio: number; fg: string; bg: string; large: boolean } | null;
+}
+
+export interface ImageAsset {
+  name: string;
+  source: "upload" | "docx" | "web";
+  alt: string | null;
+  ocr_status: "ok" | "no_text" | "unavailable" | "failed";
+  lines: OcrLine[];
+  colours: { hex: string; share: number }[];
+  width: number;
+  height: number;
+  preview: string;
+  error?: string | null;
+}
+
+export interface ChainEvent {
+  at: string;
+  kind: "upload" | "review" | "decision" | "signoff" | "fact_change";
+  text: string;
+  audit_id?: number;
+}
+
+export interface EvidenceChain {
+  finding: Finding & { decided_by: string | null };
+  draft: { id: number; title: string; version: number; content_hash: string; rulebook_version: number; reviewed_at: string | null };
+  evidence_status: { current: boolean; detail: string };
+  events: ChainEvent[];
+  history: { version: number; state: "this version" | "present" | "fixed" | "not present"; status: string | null; finding_id?: number }[];
+  receipt: string;
+}
+
+export interface SimVerdict {
+  outcome: string;
+  fact: string | null;
+  message: string;
+}
+
+export interface FactSimulation {
+  read_only: true;
+  fact: {
+    key: string;
+    from: { label: string; value_text: string; scope: string; effective_date: string };
+    to: { label: string; value_text: string; scope: string; effective_date: string };
+  };
+  drafts: {
+    draft_id: number;
+    title: string;
+    version: number;
+    status: string;
+    relation: string;
+    signed_off: boolean;
+    reason: string;
+    claims: { quote: string; before: SimVerdict; after: SimVerdict; changed: boolean }[];
+  }[];
+  expected_draft_ids: number[];
+  signoffs_to_renew: number;
+  outcome_changes: Record<string, number>;
+  drafts_with_changes: number;
+  historic_versions: number;
+  elapsed_ms: number;
+}
+
+export interface RuleSimulation {
+  read_only: true;
+  rule: { key: string; name: string; from_version: number; to_version: number };
+  drafts: {
+    draft_id: number;
+    title: string;
+    version: number;
+    status: string;
+    changes: { change: string; quote: string; message: string; blocking: boolean; severity: string; was?: string }[];
+  }[];
+  totals: { new: number; removed: number; now_blocking: number; no_longer_blocking: number };
+  signoffs_to_renew: { signoff_id: number; draft_id: number; draft_title: string }[];
+  elapsed_ms: number;
+}
+
+export type RadarLink = { type: "fact"; key: string } | { type: "rule"; key: string } | { type: "draft"; id: number };
+
+export interface Radar {
+  period: { days: number | null; since: string | null; until: string; versions_reviewed: number; drafts_reviewed: number };
+  recurring: {
+    key: string;
+    label: string;
+    rule_key: string | null;
+    findings: number;
+    versions_affected: number;
+    versions_reviewed: number;
+    examples: { draft_id: number; title: string; quote: string }[];
+  }[];
+  disagreement: {
+    key: string;
+    label: string;
+    rule_key: string | null;
+    decided: number;
+    fixed: number;
+    dismissed: number;
+    overridden: number;
+    disputed: number;
+    rate: number | null;
+    enough_data: boolean;
+    recommendation?: string;
+    reasons: { reason: string; status: string; draft_id: number; title: string; by: string | null }[];
+  }[];
+  open_risk: {
+    blocking: { draft_id: number; title: string; version: number; status: string; open_blocking: number; critical: number }[];
+    renewals: { signoff_id: number; draft_id: number; title: string; reason: string }[];
+    stale_dependencies: { draft_id: number; title: string; fact: string; fact_key: string; problem: string }[];
+  };
+  freshness: {
+    expired: { key: string; label: string; metric: string; valid_until: string; days: number }[];
+    expiring: { key: string; label: string; metric: string; valid_until: string; days: number }[];
+    no_end_date: { key: string; label: string; metric: string; valid_until: null }[];
+    horizon_days: number;
+    today: string;
+  };
+  actions: { severity: "high" | "medium"; text: string; link: RadarLink }[];
+  notes: string[];
 }

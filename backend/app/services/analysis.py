@@ -7,7 +7,7 @@ from datetime import date
 from typing import Callable
 
 from ..models import Fact, Rule
-from . import llm
+from . import images, llm
 from .claims import Claim, extract_claims
 from .gateway import max_tier
 from .rules import RuleHit, run_rule_checks
@@ -43,6 +43,7 @@ class FindingDraft:
     correction_check: dict | None = None
     source: str = "rule"
     confidence: float | None = None
+    meta: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -165,9 +166,76 @@ def _sentence_after(text: str, fix_start: int, fix_end: int, replacement: str) -
     return before, after
 
 
+def _nearest(hex_colour: str, palette: list[str]) -> float:
+    r, g, b = images.rgb_of(hex_colour)
+    return min(((r - pr) ** 2 + (g - pg) ** 2 + (b - pb) ** 2) ** 0.5
+               for pr, pg, pb in (images.rgb_of(p) for p in palette))
+
+
+def image_findings(text: str, assets: list[dict], rules: list[Rule]) -> list[FindingDraft]:
+    """Accessibility and palette findings from the measurements stored with each image."""
+    acc = next((r for r in rules if r.kind == "accessibility" and r.status == "active"), None)
+    pal = next((r for r in rules if r.kind == "palette" and r.status == "active"), None)
+    out = []
+    for block in images.parse_blocks(text):
+        if block["index"] > len(assets):
+            continue
+        asset = assets[block["index"] - 1]
+        h0, h1 = block["header"]
+        label = f"Image {block['index']} ({asset['name']})"
+        meta = {"image": block["index"]}
+        if asset.get("ocr_status") == "unavailable":
+            out.append(FindingDraft(
+                check="image", outcome="needs_review", severity="minor", blocking=False, start=h0, end=h1,
+                quote=text[h0:h1], message=f"Text in {label} could not be read on this server.",
+                explanation="Image text recognition is not available here, so claims inside this image were not "
+                            "checked. Check them by hand.", meta=meta))
+        if acc:
+            cfg = acc.config
+            missing_alt = asset.get("source") in ("docx", "web") and not (asset.get("alt") or "").strip()
+            if asset.get("source") == "web" and asset.get("alt") == "":
+                missing_alt = False  # alt="" marks a decorative image, which is correct HTML
+            if cfg.get("require_alt", True) and missing_alt:
+                out.append(FindingDraft(
+                    check="accessibility", outcome="violation", severity=acc.severity, blocking=acc.blocking,
+                    start=h0, end=h1, quote=text[h0:h1], message=f"{label} has no alt text.",
+                    explanation=acc.guideline, rule=acc, meta={**meta, "kind": "alt_text"}))
+            for i, line in enumerate(asset.get("lines", [])):
+                c = line.get("contrast")
+                if not c or i >= len(block["lines"]):
+                    continue
+                required = cfg.get("min_contrast_large", 3.0) if c["large"] else cfg.get("min_contrast", 4.5)
+                if c["ratio"] < required:
+                    s, e = block["lines"][i]
+                    out.append(FindingDraft(
+                        check="accessibility", outcome="violation", severity=acc.severity, blocking=acc.blocking,
+                        start=s, end=e, quote=text[s:e],
+                        message=f"Text contrast {c['ratio']}:1 is below WCAG AA {required}:1 "
+                                f"({c['fg']} on {c['bg']}).",
+                        explanation=f"Measured on the text pixels detected in {label}. {acc.guideline}",
+                        rule=acc, meta={**meta, "kind": "contrast", **c, "required": required}))
+        if pal:
+            cfg = pal.config
+            palette = cfg.get("colors", [])
+            off = [c for c in asset.get("colours", []) if c["share"] >= cfg.get("min_share", 0.08)
+                   and palette and _nearest(c["hex"], palette) > cfg.get("tolerance", 48)]
+            if off:
+                listed = ", ".join(f"{c['hex']} ({round(c['share'] * 100)}%)" for c in off)
+                out.append(FindingDraft(
+                    check="palette", outcome="suggestion", severity=pal.severity, blocking=pal.blocking,
+                    start=h0, end=h1, quote=text[h0:h1], message=f"{label} uses off-palette colours: {listed}.",
+                    explanation=f"{pal.guideline} Brand palette: {', '.join(palette)}.",
+                    rule=pal, meta={**meta, "kind": "palette", "off": off}))
+    return out
+
+
 def analyse(text: str, facts: list[Fact], rules: list[Rule], *, goal: str, draft_tier: str, today: date,
-            default_scope: str, ai_factory: Callable[[str], llm.AIContext] | None) -> Analysis:
+            default_scope: str, ai_factory: Callable[[str], llm.AIContext] | None,
+            assets: list[dict] | None = None) -> Analysis:
     citations: dict[int, str] = {}
+    original = text
+    blocks = images.parse_blocks(text)
+    text = images.mask_headers(text)  # "[Image 1: banner.png]" is a marker, never a claim
     hits = run_rule_checks(text, rules)
     findings = rule_findings(text, hits)
 
@@ -206,15 +274,33 @@ def analyse(text: str, facts: list[Fact], rules: list[Rule], *, goal: str, draft
     for t in tone_issues:
         start = text.find(t.quote)
         end = start + len(t.quote)
-        # The model judges tone only; anything touching a claim or an existing tone hit is dropped.
-        if t.confidence < 0.6 or any(_overlap(start, end, f.start, f.end) for f in findings
-                                     if f.check in ("tone", "claim")):
+        # The model judges tone only; anything touching an existing finding (a claim, a rule hit, injected
+        # instructions) is dropped so the same words are never reported twice.
+        if t.confidence < 0.6 or any(_overlap(start, end, f.start, f.end) for f in findings):
             continue
         findings.append(FindingDraft(
             check="tone", outcome="suggestion", severity="minor", blocking=False, start=start, end=end,
             quote=t.quote, message=t.issue, explanation=f"Guideline ({tone_rule.key}): {tone_rule.guideline}",
             rule=tone_rule, source=ai.source_label, confidence=round(t.confidence, 2),
         ))
+
+    findings += image_findings(original, assets or [], rules)
+
+    # Words read from an image cannot be fixed by editing the text: the image itself has to change.
+    for f in findings:
+        if f.meta.get("image"):
+            continue
+        block = next((b for b in blocks if _overlap(f.start, f.end, *b["body"])), None)
+        if block and f.check == "terminology" and f.rule is not None and \
+                f.quote.replace(" ", "") == f.rule.config.get("correct", "").replace(" ", ""):
+            # Same letters, different spacing: OCR often drops spaces in large type, so ask a person to look.
+            f.outcome, f.severity, f.blocking = "needs_review", "minor", False
+            f.message = (f"Read as “{f.quote}”. This may be a text-recognition spacing error; check that the image "
+                         f"says “{f.rule.config['correct']}”.")
+        if block:
+            f.meta = {**f.meta, "in_image": block["index"]}
+            f.suggestion = f.fix_start = f.fix_end = None
+            f.explanation = (f.explanation + " " if f.explanation else "") +                 f"This text was read from image {block['index']} by OCR: correct the image and upload it again."
 
     # Three-way correction check.
     goal_queue = []

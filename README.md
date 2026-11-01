@@ -28,8 +28,14 @@ All of the plan's Core MVP is built and tested end to end. Parts of the Next tie
 | Confidentiality Gateway: sensitivity tiers, effective tier, routing, masking, output check, call log, role-based evidence | `services/gateway.py`, Insights page | Next tier: done |
 | Recurring-issue view (which checks reviewers dismiss or override) | Insights page | Next tier: done |
 | Measured reliability: 50 labelled drafts, counts per check and severity, two LLM baselines | `backend/eval/`, Insights page | done |
-| Image checks (WCAG contrast, palette, logo), alt text inside DOCX | – | Not built (future work) |
-| Web-page intake, Guideline Health Radar, Google Docs/CMS plugin | – | Later tier (future work) |
+| **Round 3 · Brand Impact Simulator:** preview what a fact change, retraction or rule change would do (every affected claim re-verified, before/after), then confirm | `services/simulate.py`, Ledger and Rulebook pages | Done |
+| **Round 3 · Evidence Chain:** each finding traced from the sentence to its resolution, stale-evidence marking, copyable receipt | `services/evidence.py`, `EvidenceChain.tsx` | Done |
+| **Round 3 · Governance Drift Radar:** recurring findings and reviewer disagreement per period (with denominators and reasons), open risk, fact freshness, linked actions | `services/radar.py`, Drift Radar page | Done |
+| Image checks: OCR so claims inside images are verified, WCAG contrast measured on detected text pixels, brand palette | `services/images.py` | Done (logo aspect ratio not built) |
+| Alt-text checks for pictures in Word files and images on web pages | `services/intake.py`, `services/webpage.py` | Done |
+| Web-page intake with a safe fetch (public addresses only, size and time limits) | `services/webpage.py` | Done |
+| Sensitivity editing for facts and rules (no new version, no rulebook bump) | Ledger and Rulebook pages | Done |
+| Specialist reviewer role, Google Docs/CMS plugin | – | Future work |
 
 ## How a review runs
 
@@ -102,12 +108,15 @@ python -m pytest -q                                    # SQLite, no model needed
 TEST_DATABASE_URL=postgresql+psycopg://postgres:<pw>@localhost:5432/brandsentinel_test python -m pytest -q
 ```
 
-There are 47 tests. They cover number parsing, every claim type, the four outcomes and the near-misses (metric, scope,
+There are 80 tests (50 core, 30 for Round 3). The core tests cover number parsing, every claim type, the four outcomes and the near-misses (metric, scope,
 date, expiry, conflicting facts), every rule type, gateway routing and masking, all three correction checks
 (including a goal check that fails), rejection of off-schema model output, the full four-step journey over HTTP,
 permissions, role-based evidence, override and dismissal reasons, edit-after-sign-off, rulebook changes,
 retraction, PDF and DOCX intake, the rule that restricted content never reaches an external model, and blast
-radius over 500 drafts in under 2 seconds.
+radius over 500 drafts in under 2 seconds. The Round 3 tests prove the simulator writes nothing and reports the right
+outcome changes (including a stale preview being detected at commit), evidence attribution and role filtering, radar
+counts and time windows with no invented metrics, OCR claims, contrast, palette and alt text, OCR being unavailable,
+the safe web fetch refusing private addresses, sensitivity editing and the additive database migration.
 
 ## Measured reliability
 
@@ -138,6 +147,20 @@ gain comes from the pipeline (matching metric, then scope, then date, then value
 The team wrote and labelled the test set, which is small and synthetic. It supports a first demonstration, not
 general performance claims. The manual-checklist baseline is timed by people and is not automated here.
 
+## Round 3 notes
+
+- **OCR:** RapidOCR (ONNX, pure pip install) instead of Tesseract, which the free host cannot install. It loads on the
+  first image only (about 100 MB) and the review degrades to a clear "image text could not be read" notice if it is
+  unavailable. OCR can drop spaces in large type, so a brand name that differs only in spacing is sent to a person
+  instead of being reported as a violation. Problems in text read from an image get no automatic fix: the image itself
+  has to be corrected.
+- **Contrast** is measured on the detected text pixels: inside each OCR box the pixels are split into text and
+  background by brightness (Otsu) and the WCAG ratio is taken between the two average colours.
+- **Simulation is read-only:** the proposal is built as in-memory objects that are never saved, and the session is
+  rolled back afterwards. Confirming recalculates the impact and says if it changed since the preview.
+- **Database:** two new nullable columns (`draft_versions.assets`, `findings.meta`) are added at start-up by an
+  additive migration, so an existing database keeps its data.
+
 ## Deviations from the Round 1 plan
 
 - **Vale → Python rule engine.** The rule checks are in Python (`services/rules.py`) and work like Vale. This
@@ -158,4 +181,4 @@ general performance claims. The manual-checklist baseline is timed by people and
 - **The model can be wrong.** Model findings are marked by source and shown as suggestions, and a person decides.
 - **Sign-off is not publishing control.** A publishing integration is future work.
 - **Masking cannot hide everything.** Drafts containing codenames are treated as restricted and kept local.
-- **Image checks are not built.**
+- **Image checks cover measurable properties only.** Logo correctness and design quality still need a person.

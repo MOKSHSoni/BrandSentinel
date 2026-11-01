@@ -47,6 +47,8 @@ def finding_out(f: Finding, viewer: User, facts_by_id: dict[int, Fact]) -> dict:
         "start": f.start, "end": f.end, "quote": f.quote, "message": f.message, "explanation": f.explanation,
         "claim": f.claim, "source": f.source, "confidence": f.confidence, "status": f.status,
         "decision_reason": f.decision_reason, "decided_at": f.decided_at.isoformat() if f.decided_at else None,
+        "decided_by": f.decided_by.name if f.decided_by else None, "meta": f.meta or {},
+        "evidence_current": f.fact is None or f.fact.status == "approved",
         "suggestion": f.suggestion, "correction_check": f.correction_check,
         "fact": fact_out(f.fact, viewer) if f.fact else None,
         "rule": {"id": f.rule.id, "key": f.rule.key, "name": f.rule.name, "version": f.rule.version,
@@ -80,6 +82,8 @@ def version_out(v: DraftVersion, viewer: User, facts_by_id: dict[int, Fact]) -> 
     out["content"] = v.content
     out["findings"] = [finding_out(f, viewer, facts_by_id) for f in sorted(v.findings, key=lambda f: (f.start, f.id))]
     out["citations"] = [{"fact": fact_out(c.fact, viewer), "relation": c.relation} for c in v.citations]
+    out["assets"] = [{k: a.get(k) for k in ("name", "source", "alt", "ocr_status", "lines", "colours", "width",
+                                             "height", "preview", "error")} for a in (v.assets or [])]
     return out
 
 

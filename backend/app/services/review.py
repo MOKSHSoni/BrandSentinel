@@ -71,7 +71,8 @@ def run_review(db: Session, version: DraftVersion, actor: User | None = None, us
     made = make_ai_factory(db, version.id, rules, version.content, use_ai)
     factory, log_rows = made if made else (None, [])
     result = analyse(version.content, facts, rules, goal=draft.goal, draft_tier=draft.sensitivity,
-                     today=settings.today(), default_scope=settings.brand_default_scope, ai_factory=factory)
+                     today=settings.today(), default_scope=settings.brand_default_scope, ai_factory=factory,
+                     assets=version.assets or [])
 
     for f in list(version.findings):
         db.delete(f)
@@ -88,7 +89,7 @@ def run_review(db: Session, version: DraftVersion, actor: User | None = None, us
             start=fd.start, end=fd.end, quote=fd.quote, message=fd.message, explanation=fd.explanation,
             claim=fd.claim, fact_id=fd.fact.id if fd.fact else None, rule_id=fd.rule.id if fd.rule else None,
             candidate_fact_ids=[c.id for c in fd.candidates], suggestion=fd.suggestion,
-            correction_check=fd.correction_check, source=fd.source, confidence=fd.confidence,
+            correction_check=fd.correction_check, source=fd.source, confidence=fd.confidence, meta=fd.meta,
             status="info" if fd.outcome == "supported" else "open",
         )
         # A dismissal with a reason carries over to the same issue in the next version.
@@ -110,6 +111,8 @@ def run_review(db: Session, version: DraftVersion, actor: User | None = None, us
     version.review_ms = int((time.time() - t0) * 1000)
     version.effective_tier = result.effective_tier
     version.ai_status = result.ai_status
+    if any(a.get("ocr_status") == "unavailable" for a in version.assets or []):
+        version.ai_status += " Image text recognition is unavailable on this server; image text was not checked."
     draft.updated_at = datetime.now(timezone.utc)
     if draft.needs_rereview and version.number == max(v.number for v in draft.versions):
         draft.needs_rereview = False
@@ -133,10 +136,12 @@ def _previous_decisions(db: Session, version: DraftVersion) -> dict:
     return {(f.check, f.quote, f.outcome): f for f in prev.findings}
 
 
-def new_version(db: Session, draft: Draft, content: str, author: User, note: str, filename: str = "") -> DraftVersion:
+def new_version(db: Session, draft: Draft, content: str, author: User, note: str, filename: str = "",
+                assets: list[dict] | None = None) -> DraftVersion:
     number = (max((v.number for v in draft.versions), default=0)) + 1
     v = DraftVersion(draft_id=draft.id, number=number, content=content, content_hash=content_hash(content),
-                     change_note=note, source_filename=filename, created_by_id=author.id, review_state="pending")
+                     change_note=note, source_filename=filename, created_by_id=author.id, review_state="pending",
+                     assets=assets or [])
     db.add(v)
     draft.versions.append(v)
     db.flush()

@@ -22,9 +22,15 @@ class Span:
         return src[self.start : self.end]
 
 
+# A full stop after these is an abbreviation, not the end of a sentence ("Rs. 150 cashback").
+ABBREVIATIONS = re.compile(r"(?:\b(?:Rs|No|Nos|vs|Mr|Mrs|Ms|Dr|St|approx|incl|e\.g|i\.e|etc)\.)$", re.I)
+
+
 def sentences(text: str) -> list[Span]:
     spans, pos = [], 0
     for m in SENTENCE_END.finditer(text):
+        if "\n" not in m.group(0) and ABBREVIATIONS.search(text, max(0, m.start() - 8), m.start()):
+            continue
         if m.start() > pos:
             spans.append(Span(pos, m.start()))
         pos = m.end()

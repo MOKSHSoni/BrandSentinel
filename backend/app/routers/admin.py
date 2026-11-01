@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel
@@ -55,6 +57,43 @@ def me(user: User = Depends(current_user)):
 @router.get("/samples")
 def samples():
     return [{"key": k, **v} for k, v in SAMPLES.items()]
+
+
+SAMPLES_DIR = Path(__file__).resolve().parents[1] / "samples"
+DOCX_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+SAMPLE_FILES = {
+    "festive_banner.png": ("image/png", "Banner image: a claim inside the image, low-contrast small text and an "
+                                        "off-palette colour block."),
+    "banner_post.docx": (DOCX_TYPE, "Word post with the same banner embedded and no alt text."),
+}
+
+
+@router.get("/sample-files")
+def sample_files():
+    return [{"name": n, "description": d, "url": f"/api/sample-files/{n}"} for n, (_, d) in SAMPLE_FILES.items()]
+
+
+@router.get("/sample-files/{name}")
+def sample_file(name: str):
+    if name not in SAMPLE_FILES:
+        raise HTTPException(404, "Unknown sample.")
+    banner = (SAMPLES_DIR / "festive_banner.png").read_bytes()
+    if name == "banner_post.docx":
+        body = make_docx("Festive banner post", "This Diwali, celebrate with Nimbus Pay. See the banner below.", banner)
+    else:
+        body = banner
+    return Response(body, media_type=SAMPLE_FILES[name][0],
+                    headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+@router.get("/radar")
+def radar(days: int = 30, user: User = Depends(require("manager", "admin")), db: Session = Depends(get_db)):
+    """Governance Drift Radar. days=0 means all time."""
+    from ..services.radar import build_radar
+
+    if days < 0 or days > 3650:
+        raise HTTPException(400, "Choose a period between 1 and 3650 days, or 0 for all time.")
+    return build_radar(db, user, days or None)
 
 
 @router.get("/samples/{key}.docx")

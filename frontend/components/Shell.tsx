@@ -18,6 +18,7 @@ const NAV = [
   { href: "/ledger", label: "Truth Ledger", roles: ["creator", "manager", "admin"] },
   { href: "/rules", label: "Rulebook", roles: ["creator", "manager", "admin"] },
   { href: "/blast", label: "Blast radius", roles: ["manager", "admin"] },
+  { href: "/radar", label: "Drift Radar", roles: ["manager", "admin"] },
   { href: "/audit", label: "Audit log", roles: ["manager", "admin"] },
   { href: "/insights", label: "Insights", roles: ["manager", "admin"] },
 ];

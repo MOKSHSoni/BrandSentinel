@@ -14,7 +14,7 @@ from ..models import TIERS, AuditLog, Comment, Draft, DraftVersion, Fact, Findin
 from ..serializers import draft_summary, signoff_out, user_out, version_meta, version_out
 from ..services import audit, governance, review
 from ..services.analysis import FindingDraft, apply_fixes, check_correction
-from ..services.intake import IntakeError, extract_text, normalise
+from ..services.intake import IntakeError, extract, normalise
 
 router = APIRouter(prefix="/api", tags=["drafts"])
 
@@ -46,15 +46,25 @@ def visible_draft(db: Session, draft_id: int, user: User) -> Draft:
     return d
 
 
-async def _read_content(text: str | None, file: UploadFile | None) -> tuple[str, str]:
+async def _read_content(text: str | None, file: UploadFile | None, url: str | None = None) -> tuple[str, str, list]:
+    """Returns (draft text, source label, image assets)."""
+    from fastapi.concurrency import run_in_threadpool
+
+    from ..services import webpage
+
     try:
         if file is not None and file.filename:
-            return extract_text(file.filename, await file.read()), file.filename
+            data = await file.read()
+            content, assets = await run_in_threadpool(extract, file.filename, data)
+            return content, file.filename, assets
+        if url and url.strip():
+            content, assets, _title = await run_in_threadpool(webpage.extract_page, url.strip())
+            return content, url.strip(), assets
         if text and text.strip():
-            return normalise(text), ""
+            return normalise(text), "", []
     except IntakeError as e:
         raise HTTPException(400, str(e))
-    raise HTTPException(400, "Paste text or upload a .docx, .pdf or .txt file.")
+    raise HTTPException(400, "Paste text, enter a web address, or upload a .docx, .pdf, .txt or image file.")
 
 
 @router.get("/drafts")
@@ -73,18 +83,19 @@ async def create_draft(
     channel: str = Form(""),
     sensitivity: str = Form("public"),
     text: str | None = Form(None),
+    url: str | None = Form(None),
     file: UploadFile | None = File(None),
     user: User = Depends(require("creator", "manager", "admin")),
     db: Session = Depends(get_db),
 ):
     if sensitivity not in TIERS:
         raise HTTPException(400, f"Sensitivity must be one of {', '.join(TIERS)}.")
-    content, filename = await _read_content(text, file)
+    content, filename, assets = await _read_content(text, file, url)
     d = Draft(title=title.strip()[:200] or "Untitled", goal=goal.strip(), channel=channel.strip(),
               sensitivity=sensitivity, created_by_id=user.id)
     db.add(d)
     db.flush()
-    v = review.new_version(db, d, content, user, "Initial upload", filename)
+    v = review.new_version(db, d, content, user, "Initial upload", filename, assets)
     audit.record(db, user, "draft.created", "draft", d.id, f"Created “{d.title}” v1" + (f" from {filename}" if filename else ""),
                  draft_id=d.id, content_hash=v.content_hash)
     db.commit()
@@ -129,11 +140,13 @@ async def add_version(
 ):
     d = visible_draft(db, draft_id, user)
     _check_editable(d, user)
-    content, filename = await _read_content(text, file)
+    content, filename, assets = await _read_content(text, file)
     latest = governance.latest_version(d)
     if review.content_hash(content) == latest.content_hash:
         raise HTTPException(400, "No changes: the text is identical to the latest version.")
-    v = review.new_version(db, d, content, user, note.strip() or "Edited", filename)
+    # A text edit keeps the images of the previous version; a new file brings its own.
+    v = review.new_version(db, d, content, user, note.strip() or "Edited", filename,
+                           assets if (file is not None and file.filename) else latest.assets)
     governance.on_new_version(db, d, v)
     audit.record(db, user, "version.created", "draft_version", v.id, f"Created v{v.number}: {v.change_note}",
                  draft_id=d.id, content_hash=v.content_hash)
@@ -184,6 +197,8 @@ def decide_finding(finding_id: int, body: Decision, user: User = Depends(current
     elif body.action == "edit":
         if body.text is None:
             raise HTTPException(400, "Give the replacement text.")
+        if (f.meta or {}).get("in_image") or (f.meta or {}).get("image"):
+            raise HTTPException(400, "This text is inside an image. Correct the image and upload it again.")
         cc = dict(f.correction_check or {})
         fix_start, fix_end = _fix_span(f)
         facts, rules = review.ledger(db)
@@ -211,6 +226,18 @@ def decide_finding(finding_id: int, body: Decision, user: User = Depends(current
     return {"status": f.status, "check": result}
 
 
+@router.get("/findings/{finding_id}/chain")
+def finding_chain(finding_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Evidence Chain: the finding from its sentence to its resolution, from stored records only."""
+    from ..services.evidence import build_chain
+
+    f = db.get(Finding, finding_id)
+    if f is None:
+        raise HTTPException(404, "Finding not found.")
+    visible_draft(db, f.version.draft_id, user)
+    return build_chain(db, f, user)
+
+
 def _fix_span(f: Finding) -> tuple[int, int]:
     cc = f.correction_check or {}
     if "edited" in cc:
@@ -235,7 +262,7 @@ def apply_accepted(draft_id: int, background: BackgroundTasks, user: User = Depe
     if not fixes:
         raise HTTPException(400, "Accept or edit at least one fix first.")
     content = apply_fixes(v.content, fixes)
-    new = review.new_version(db, d, content, user, f"Applied {len(fixes)} accepted fix(es)")
+    new = review.new_version(db, d, content, user, f"Applied {len(fixes)} accepted fix(es)", assets=v.assets)
     governance.on_new_version(db, d, new)
     audit.record(db, user, "version.created", "draft_version", new.id, f"Created v{new.number} by applying {len(fixes)} fix(es).",
                  draft_id=d.id, content_hash=new.content_hash)

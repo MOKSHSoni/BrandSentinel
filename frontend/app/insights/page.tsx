@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -177,29 +178,12 @@ export default function InsightsPage() {
         )}
       </Card>
 
-      <Card className="p-5">
-        <h2 className="mb-1 font-semibold text-slate-900">Recurring issues</h2>
-        <p className="mb-3 text-sm text-slate-500">Which checks fire most, and which ones reviewers dismiss or override (a sign that a rule is unclear).</p>
-        {!data ? <Spinner /> : (
-          <table className="w-full text-sm">
-            <thead className="text-left text-xs uppercase tracking-wide text-slate-500">
-              <tr><th className="py-2">Check</th><th>Total</th><th>Open</th><th>Fixed</th><th>Dismissed</th><th>Overridden</th><th>Disagreement</th></tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {data.recurring.map((r) => (
-                <tr key={r.label}>
-                  <td className="py-1.5">{r.label}</td>
-                  <td>{r.total}</td>
-                  <td>{r.open}</td>
-                  <td>{r.accepted + r.edited}</td>
-                  <td>{r.dismissed}</td>
-                  <td>{r.overridden}</td>
-                  <td className={r.disagreement_rate && r.disagreement_rate >= 0.5 ? "font-medium text-red-700" : ""}>{r.disagreement_rate == null ? "—" : `${Math.round(r.disagreement_rate * 100)}%`}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+      <Card className="flex flex-wrap items-center justify-between gap-3 p-5">
+        <div>
+          <h2 className="font-semibold text-slate-900">Recurring issues and reviewer disagreement</h2>
+          <p className="text-sm text-slate-500">Now in the Governance Drift Radar, with time periods, denominators, recorded reasons, open risk and fact freshness.</p>
+        </div>
+        <Link href="/radar" className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700">Open Drift Radar</Link>
       </Card>
 
       <Card className="p-5">

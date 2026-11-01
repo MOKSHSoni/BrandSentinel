@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
-from .db import Base, SessionLocal, engine
+from .db import Base, SessionLocal, engine, ensure_columns
 from .routers import admin, drafts, evaluation, ledger
 from .seed import ensure_seeded
 
@@ -15,6 +15,9 @@ log = logging.getLogger("brandsentinel")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(engine)
+    added = ensure_columns(engine)
+    if added:
+        log.info("Added database columns: %s", ", ".join(added))
     if settings.seed_on_startup:
         db = SessionLocal()
         try:
