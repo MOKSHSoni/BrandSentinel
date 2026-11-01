@@ -13,6 +13,8 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
+      - key: MALLOC_ARENA_MAX
+        value: "2" # stops glibc keeping a memory pool per thread (OCR threads would otherwise bloat memory)
       - key: DATABASE_URL
         sync: false # Neon connection string
       - key: JWT_SECRET

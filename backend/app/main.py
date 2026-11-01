@@ -1,4 +1,5 @@
 import logging
+import threading
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -25,6 +26,10 @@ async def lifespan(app: FastAPI):
                 log.info("Seeded the Nimbus Pay demo brand.")
         finally:
             db.close()
+    if settings.ocr_warmup:
+        from .services import images
+
+        threading.Thread(target=images.warm_up, name="ocr-warmup", daemon=True).start()
     yield
 
 

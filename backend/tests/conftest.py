@@ -6,6 +6,7 @@ os.environ["LOCAL_LLM_ENABLED"] = "false"
 os.environ["EXTERNAL_LLM_URL"] = ""
 os.environ["REVIEW_DATE"] = "2026-10-27"
 os.environ["SEED_ON_STARTUP"] = "false"
+os.environ["OCR_WARMUP"] = "false"
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402

@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     review_date: str = ""
     # Re-seed the demo brand on startup when the database is empty.
     seed_on_startup: bool = True
+    # Load the OCR model in the background at start-up instead of on the first image upload.
+    ocr_warmup: bool = True
 
     @property
     def cors_list(self) -> list[str]:

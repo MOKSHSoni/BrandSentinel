@@ -10,15 +10,24 @@ import io
 import logging
 import re
 import threading
+from pathlib import Path
 
 log = logging.getLogger("brandsentinel.images")
 
-MAX_SIDE = 1600
+MAX_SIDE = 1280
+OCR_CONFIG = Path(__file__).with_name("ocr_config.yaml")  # single-threaded, no angle model, no upscaling
 MAX_IMAGES = 8
 IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp")
 _engine = None
 _engine_failed = False
 _lock = threading.Lock()
+_infer_lock = threading.Lock()  # one OCR at a time, so simultaneous uploads never stack their memory peaks
+
+
+def warm_up() -> None:
+    """Load OCR while the server is idle (called in a background thread at start-up), so the one-time
+    load spike never coincides with a user's upload."""
+    _ocr_engine()
 
 
 def _ocr_engine():
@@ -31,7 +40,7 @@ def _ocr_engine():
             try:
                 from rapidocr_onnxruntime import RapidOCR
 
-                _engine = RapidOCR()
+                _engine = RapidOCR(config_path=str(OCR_CONFIG))
             except Exception as e:  # missing package, missing system library, out of memory
                 log.warning("OCR unavailable: %s", e)
                 _engine_failed = True
@@ -61,7 +70,8 @@ def run_ocr(img) -> tuple[str, list[dict]]:
         return "unavailable", []
     import numpy as np
 
-    result, _ = engine(np.asarray(img))
+    with _infer_lock:
+        result, _ = engine(np.asarray(img))
     lines = []
     for box, text, conf in result or []:
         conf = float(conf)
