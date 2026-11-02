@@ -135,7 +135,7 @@ The demo password for every account is `demo1234`. The login page signs you in w
 
 ```bash
 cd backend
-python -m pytest -q        # 113 tests on SQLite, no model or database setup needed
+python -m pytest -q        # 115 tests on SQLite, no model or database setup needed
 
 # the same tests on PostgreSQL (create a database called brandsentinel_test first)
 TEST_DATABASE_URL=postgresql+psycopg://postgres:<password>@localhost:5432/brandsentinel_test python -m pytest -q
@@ -229,5 +229,6 @@ general performance claims. The manual-checklist baseline is timed by people and
 - **Image checks cover measurable properties only.** Logo correctness and design quality still need a person.
 - **Image limits.** Images above 25 megapixels are refused, because decoding them would exhaust the free server's memory.
   Up to 8 images are checked per file or web page.
+- **Small text in images.** OCR reads a copy scaled to 800 pixels on the long side to stay within the free server's memory, so very small text can be missed.
 - **One shared demo.** All visitors use the same data, so testers see each other's changes. Reset demo restores it.
 - **The free server sleeps** after about 15 minutes idle; the next visit takes 30–50 seconds.
