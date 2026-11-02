@@ -6,6 +6,7 @@ palette rules, so an admin changing a threshold re-evaluates stored images witho
 """
 
 import base64
+import ctypes
 import io
 import logging
 import re
@@ -15,6 +16,7 @@ from pathlib import Path
 log = logging.getLogger("brandsentinel.images")
 
 MAX_SIDE = 1280
+OCR_SIDE = 800  # OCR memory grows with image area, and the detector ignores its own size limit below 1500 px
 MAX_PIXELS = 25_000_000  # decoding costs 3 bytes per pixel whatever the file size, so refuse before decoding
 OCR_CONFIG = Path(__file__).with_name("ocr_config.yaml")  # single-threaded, no angle model, no upscaling
 MAX_IMAGES = 8
@@ -23,6 +25,20 @@ _engine = None
 _engine_failed = False
 _lock = threading.Lock()
 _infer_lock = threading.Lock()  # one OCR at a time, so simultaneous uploads never stack their memory peaks
+
+
+def _tune_malloc():
+    """On Linux, make glibc hand freed memory back to the system; otherwise OCR's peak stays allocated for good."""
+    try:
+        libc = ctypes.CDLL("libc.so.6")
+    except OSError:  # not Linux with glibc
+        return None
+    libc.mallopt(-3, 1 << 20)  # M_MMAP_THRESHOLD: large buffers are unmapped as soon as they are freed
+    libc.mallopt(-1, 1 << 20)  # M_TRIM_THRESHOLD
+    return libc
+
+
+_libc = _tune_malloc()
 
 
 def warm_up() -> None:
@@ -84,7 +100,13 @@ def run_ocr(img) -> tuple[str, list[dict]]:
 
     try:
         with _infer_lock:
-            result, _ = engine(np.asarray(img))
+            # OCR gets its own smaller copy: colours and contrast are measured on the sharper image.
+            small = img.copy()
+            small.thumbnail((OCR_SIDE, OCR_SIDE))
+            scale = img.width / small.width
+            result, _ = engine(np.asarray(small))
+            if _libc:
+                _libc.malloc_trim(0)
     except Exception as e:
         log.warning("OCR failed: %s", e)
         return "failed", []
@@ -95,7 +117,7 @@ def run_ocr(img) -> tuple[str, list[dict]]:
         if conf < 0.5 or not text:
             continue
         xs, ys = [p[0] for p in box], [p[1] for p in box]
-        lines.append({"text": text, "box": [int(min(xs)), int(min(ys)), int(max(xs)), int(max(ys))],
+        lines.append({"text": text, "box": [int(min(xs) * scale), int(min(ys) * scale), int(max(xs) * scale), int(max(ys) * scale)],
                       "conf": round(conf, 2)})
     lines.sort(key=lambda l: (l["box"][1], l["box"][0]))
     return ("ok" if lines else "no_text"), lines

@@ -28,7 +28,8 @@ def _memory_mb() -> dict:
     try:
         with open("/proc/self/status") as fh:
             fields = dict(line.split(":", 1) for line in fh if ":" in line)
-        return {"now": int(fields["VmRSS"].split()[0]) // 1024, "peak": int(fields["VmHWM"].split()[0]) // 1024}
+        mb = lambda name: int(fields[name].split()[0]) // 1024
+        return {"now": mb("VmRSS"), "peak": mb("VmHWM"), "anon": mb("RssAnon"), "file": mb("RssFile")}
     except (OSError, KeyError, ValueError):
         return {}
 
