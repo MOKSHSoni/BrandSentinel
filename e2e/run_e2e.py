@@ -258,8 +258,9 @@ with sync_playwright() as p:
     page.reload()
     check(shows("Contradicted", TIMEOUT), "refreshing straight after submitting still shows the review")
     page.goto(WEB + "/")
-    time.sleep(1)
-    check(page.get_by_role("link", name="Double click").count() == 1, "double-clicking Check draft creates one draft")
+    expect(page.get_by_role("link", name="Double click").first).to_be_visible(timeout=TIMEOUT)  # the list loads slowly on a small server
+    copies = page.get_by_role("link", name="Double click").count()
+    check(copies == 1, f"double-clicking Check draft creates one draft ({copies} found)")
     page.goto(url)
     page.get_by_role("button", name="Accept fix").first.dblclick()
     expect(page.get_by_role("button", name=re.compile("Apply 1 accepted"))).to_be_visible()
