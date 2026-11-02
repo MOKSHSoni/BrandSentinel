@@ -40,6 +40,11 @@ def sign_off(db: Session, draft: Draft, manager: User, comment: str, overrides: 
     if stale:
         raise GovernanceError(f"{stale[0].label} is {stale[0].status}. Re-run the review.")
 
+    # An accepted fix is not in the text until it is applied: signing now would approve the uncorrected wording.
+    unapplied = sum(1 for f in v.findings if f.status in ("accepted", "edited"))
+    if unapplied:
+        raise GovernanceError(f"{unapplied} accepted fix(es) have not been applied yet. Apply them to create the "
+                              "corrected version, then sign that off.")
     open_blocking = [f for f in v.findings if f.status == "open" and f.blocking]
     missing = [f for f in open_blocking if not (overrides.get(f.id) or "").strip()]
     if missing:

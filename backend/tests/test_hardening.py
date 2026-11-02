@@ -190,6 +190,18 @@ def test_renewing_a_sign_off_closes_the_old_one(client):
     assert did not in [r["draft_id"] for r in open_renewals]
 
 
+def test_cannot_sign_off_while_accepted_fixes_are_not_applied(client):
+    priya, meera = login(client, "priya"), login(client, "meera")
+    did = create(client, priya, text="Trusted by 50,000 customers.")
+    f = next(x for x in get(client, priya, did)["version"]["findings"] if x["suggestion"])
+    client.post(f"/api/findings/{f['id']}/decision", headers=priya, json={"action": "accept"})
+    r = client.post(f"/api/drafts/{did}/signoff", headers=meera, json={})
+    assert r.status_code == 400 and "not been applied" in r.json()["detail"]
+    client.post(f"/api/drafts/{did}/apply-fixes", headers=priya)
+    assert client.post(f"/api/drafts/{did}/signoff", headers=meera, json={}).status_code == 200
+    assert get(client, meera, did)["signoffs"][0]["version_number"] == 2
+
+
 # ---------- text read from an image ----------
 
 def test_image_text_cannot_be_edited_away(client):

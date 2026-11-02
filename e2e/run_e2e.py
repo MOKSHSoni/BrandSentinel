@@ -85,6 +85,13 @@ with sync_playwright() as p:
         except AssertionError:
             return False
 
+    def appears(locator, timeout=20_000) -> bool:
+        try:
+            expect(locator.first).to_be_visible(timeout=timeout)
+            return True
+        except AssertionError:
+            return False
+
     section("First visit, no walkthrough")
     page.goto(WEB)
     page.wait_for_url("**/login")
@@ -117,18 +124,20 @@ with sync_playwright() as p:
         page.get_by_role("button", name="Accept fix").first.click()
         expect(page.get_by_role("button", name="Accept fix")).to_have_count(count - i - 1)
     check(shows(re.compile("Preview of v2 with all 2 accepted fixes")), "combined preview of both fixes")
+    check(shows("not in the text yet"), "accepted fixes are shown as not applied yet")
     page.get_by_role("button", name=re.compile("Apply 2 accepted fix")).click()
+    expect(page.get_by_role("button", name="v2", exact=True)).to_be_visible(timeout=TIMEOUT)
     check(shows("No open issues on this version.", TIMEOUT), "v2 re-reviewed with no open issues")
-    check(page.get_by_text("Trusted by 80,000 customers.").count() > 0, "corrected text is right")
+    check(appears(page.locator("mark", has_text="80,000 customers"), TIMEOUT), "v2 contains the corrected figure")
 
     sign_in("Meera Iyer")
     page.goto(draft_url)
     page.get_by_role("button", name="Show changes from v1").click()
-    check(page.locator("ins").filter(has_text="80,000").count() > 0, "manager sees the word-level diff")
+    check(appears(page.locator("ins").filter(has_text="80,000")), "manager sees the word-level diff")
     page.get_by_role("button", name="Hide changes").click()
     page.get_by_role("button", name="Sign off v2").click()
     check(shows(re.compile("facts F-12 v3, F-13 v2")), "sign-off records the fact versions")
-    check(page.get_by_role("button", name="Sign off v2").count() == 0, "cannot sign off the same version again")
+    check(shows("is signed off. Any edit creates a new version") and page.get_by_role("button", name="Sign off v2").count() == 0, "cannot sign off the same version again")
 
     sign_in("Rahul Verma")
     page.goto(WEB + "/ledger?fact=F-12")
@@ -154,6 +163,7 @@ with sync_playwright() as p:
     check(shows(re.compile("Blast radius:.*F-12 changed")), "the draft explains why it was flagged")
     page.get_by_role("button", name="Re-run review against current ledger").click()
     check(shows(re.compile("gives active customers as 95,000"), TIMEOUT), "re-review contradicts the old figure")
+    expect(page.get_by_role("button", name="Re-run review against current ledger")).to_have_count(0, timeout=TIMEOUT)
     page.get_by_role("button", name="v1", exact=True).click()
     check(shows("Evidence out of date"), "an older version marks its evidence as out of date")
 
@@ -255,7 +265,7 @@ with sync_playwright() as p:
     expect(page.get_by_role("button", name=re.compile("Apply 1 accepted"))).to_be_visible()
     page.get_by_role("button", name=re.compile("Apply 1 accepted")).dblclick()
     expect(page.get_by_role("button", name=re.compile(r"^v2$"))).to_be_visible(timeout=TIMEOUT)
-    time.sleep(1)
+    check(shows("No open issues on this version.", TIMEOUT), "the new version finishes its review")
     check(page.get_by_role("button", name=re.compile(r"^v\d+$")).count() == 2, "double-clicking Apply creates one version")
 
     section("Manager decisions and expired sessions")
