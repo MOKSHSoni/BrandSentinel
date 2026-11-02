@@ -269,8 +269,7 @@ with sync_playwright() as p:
     check(shows(re.compile("Changes requested by Meera Iyer")), "the decision and reason are shown on the draft")
     page.goto(WEB + "/")
     page.evaluate("localStorage.setItem('bs_token','expired')")
-    page.get_by_role("link", name="Truth Ledger").click()
-    page.wait_for_url("**/login", timeout=20_000)
+    page.wait_for_url("**/login", timeout=20_000)  # the dashboard refreshes itself and notices
     check(True, "an expired session returns to sign-in")
 
     section("Phone width")
