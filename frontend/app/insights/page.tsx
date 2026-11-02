@@ -87,7 +87,7 @@ export default function InsightsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Insights" subtitle="Measured reliability, recurring issues and the model call log." />
+      <PageHeader title="Insights" subtitle="Measured reliability and the model call log." />
       <ErrorBox error={error} />
 
       <Card className="p-5">

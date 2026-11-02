@@ -46,11 +46,14 @@ export async function api<T = unknown>(path: string, init: RequestInit & { json?
     let message = res.statusText;
     try {
       const data = await res.json();
-      message = typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail ?? data);
+      message = typeof data.detail === "string" ? data.detail : "That request could not be completed. Check the input and try again.";
     } catch {
       /* not JSON */
     }
-    if (res.status === 401) setToken(null);
+    if (res.status === 401 && !path.startsWith("/api/auth/login")) {
+      setToken(null);
+      if (typeof window !== "undefined") window.dispatchEvent(new Event("bs-session-expired"));
+    }
     throw new ApiError(res.status, message);
   }
   return (await res.json()) as T;

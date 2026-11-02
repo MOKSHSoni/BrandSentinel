@@ -128,6 +128,10 @@ export default function DraftPage() {
   const [tab, setTab] = useState<Tab>("signoff");
 
   const load = useCallback(async () => {
+    if (!/^\d+$/.test(id)) {
+      setError("Draft not found.");
+      return;
+    }
     try {
       const q = viewVersion ? `?version=${viewVersion}` : "";
       setD(await api<DraftDetail>(`/api/drafts/${id}${q}`));
@@ -156,7 +160,14 @@ export default function DraftPage() {
     };
   }, [d]);
 
-  if (error && !d) return <ErrorBox error={error} />;
+  if (error && !d) {
+    return (
+      <div className="space-y-3">
+        <ErrorBox error={error} />
+        <Link href="/" className="text-sm text-indigo-700 hover:underline">← Back to drafts</Link>
+      </div>
+    );
+  }
   if (!d || !user) return <Spinner label="Loading draft…" />;
 
   const v = d.version;
@@ -164,8 +175,11 @@ export default function DraftPage() {
   const canEdit = d.is_latest && (isOwner || user.role !== "creator") && d.status !== "rejected";
   const accepted = v.findings.filter((f) => f.status === "accepted" || f.status === "edited").length;
   const isManager = user.role === "manager" || user.role === "admin";
+  const decision = [...d.comments].reverse().find((c) => c.kind === d.status);
+  const stuck = v.review_state === "pending" && v.pending_seconds > 240;
 
-  async function action(fn: () => Promise<unknown>) {
+  /** Runs a change and reloads the draft. Resolves to false on failure, so forms can keep what was typed. */
+  async function action(fn: () => Promise<unknown>): Promise<boolean> {
     setBusy(true);
     setError(null);
     try {
@@ -173,8 +187,10 @@ export default function DraftPage() {
       setViewVersion(null);
       setDiffFrom(null);
       await load();
+      return true;
     } catch (e) {
       setError((e as Error).message);
+      return false;
     } finally {
       setBusy(false);
     }
@@ -211,7 +227,26 @@ export default function DraftPage() {
             </Button>
           )}
           {canEdit && !editing && (
-            <Button variant="secondary" onClick={() => { setEditText(v.content); setEditing(true); }}>Edit text</Button>
+            <>
+              <Button variant="secondary" onClick={() => { setEditText(v.content); setEditing(true); }}>Edit text</Button>
+              <label className={`inline-flex cursor-pointer items-center rounded-md bg-white px-3 py-1.5 text-sm font-medium text-slate-700 ring-1 ring-inset ring-slate-300 hover:bg-slate-50 ${busy ? "pointer-events-none opacity-50" : ""}`}>
+                Upload new version
+                <input
+                  type="file"
+                  className="sr-only"
+                  accept=".docx,.pdf,.txt,.md,.png,.jpg,.jpeg,.webp"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (!file) return;
+                    const form = new FormData();
+                    form.set("file", file);
+                    form.set("note", `Uploaded ${file.name}`);
+                    action(() => api(`/api/drafts/${d.id}/versions`, { method: "POST", body: form }));
+                  }}
+                />
+              </label>
+            </>
           )}
         </div>
       </div>
@@ -219,6 +254,12 @@ export default function DraftPage() {
       {d.needs_rereview && (
         <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
           <b>Blast radius:</b> {d.rereview_reason}. This draft relied on the old version, so it must be re-reviewed{d.signoffs.some((s) => s.status === "needs_renewal") ? " and its sign-off renewed" : ""}.
+        </div>
+      )}
+      {(d.status === "rejected" || d.status === "changes_requested") && decision && (
+        <div className={`mb-4 rounded-lg border px-4 py-3 text-sm ${d.status === "rejected" ? "border-slate-300 bg-slate-100 text-slate-800" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
+          <b>{d.status === "rejected" ? "Rejected" : "Changes requested"} by {decision.author.name}:</b> {decision.body}
+          {d.status === "rejected" ? " This draft is closed. Start a new draft to try again." : " Edit the draft to create a new version, which is reviewed again."}
         </div>
       )}
       <ErrorBox error={error} />
@@ -247,7 +288,8 @@ export default function DraftPage() {
           <Card className="p-5">
             {editing ? (
               <div className="space-y-2">
-                <textarea value={editText} onChange={(e) => setEditText(e.target.value)} rows={12} className="w-full rounded-md border border-slate-300 p-3 text-[15px] leading-7" />
+                <textarea value={editText} onChange={(e) => setEditText(e.target.value)} rows={12} aria-label="Draft text" className="w-full rounded-md border border-slate-300 p-3 text-[15px] leading-7" />
+                {v.assets?.length > 0 && <p className="text-xs text-slate-500">Lines under “[Image N: …]” were read from the image and cannot be edited here. To change them, correct the image and use “Upload new version”.</p>}
                 <div className="flex gap-2">
                   <Button
                     disabled={busy}
@@ -255,7 +297,7 @@ export default function DraftPage() {
                       const form = new FormData();
                       form.set("text", editText);
                       form.set("note", "Edited by hand");
-                      action(() => api(`/api/drafts/${d.id}/versions`, { method: "POST", body: form })).then(() => setEditing(false));
+                      action(() => api(`/api/drafts/${d.id}/versions`, { method: "POST", body: form })).then((ok) => ok && setEditing(false));
                     }}
                   >
                     Save as v{d.versions.length + 1} and re-check
@@ -342,7 +384,7 @@ export default function DraftPage() {
                   ))}
                   <div className="flex gap-2">
                     <input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Add a comment" className="flex-1 rounded-md border border-slate-300 px-2 py-1.5 text-sm" />
-                    <Button disabled={!comment.trim()} onClick={() => action(() => api(`/api/drafts/${d.id}/comments`, { method: "POST", json: { body: comment } })).then(() => setComment(""))}>Post</Button>
+                    <Button disabled={!comment.trim()} onClick={() => action(() => api(`/api/drafts/${d.id}/comments`, { method: "POST", json: { body: comment } })).then((ok) => ok && setComment(""))}>Post</Button>
                   </div>
                 </div>
               )}
@@ -365,10 +407,22 @@ export default function DraftPage() {
           {v.review_state === "pending" ? (
             <Card className="p-5">
               <Spinner label="Reviewing: rule checks, claim verification, then the AI judge…" />
-              <p className="mt-2 text-xs text-slate-500">With the local model this takes up to a minute. The page updates by itself.</p>
+              <p className="mt-2 text-xs text-slate-500">
+                {stuck ? "This is taking longer than it should. You can start it again." : "This can take up to a minute. The page updates by itself."}
+              </p>
+              {stuck && (
+                <Button className="mt-2" disabled={busy} onClick={() => action(() => api(`/api/drafts/${d.id}/review`, { method: "POST" }))}>
+                  {busy ? "Retrying…" : "Retry review"}
+                </Button>
+              )}
             </Card>
           ) : v.review_state === "failed" ? (
-            <ErrorBox error={v.ai_status} />
+            <Card className="space-y-2 p-5">
+              <ErrorBox error={v.ai_status} />
+              <Button disabled={busy} onClick={() => action(() => api(`/api/drafts/${d.id}/review`, { method: "POST" }))}>
+                {busy ? "Retrying…" : "Retry review"}
+              </Button>
+            </Card>
           ) : (
             <>
               <div className="flex items-center justify-between">

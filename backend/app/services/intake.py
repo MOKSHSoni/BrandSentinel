@@ -3,11 +3,13 @@ images found in them (see services/images.py)."""
 
 import io
 import re
+import zipfile
 
 from . import images
 
 MAX_BYTES = 5 * 1024 * 1024
 MAX_CHARS = 20_000
+MAX_UNZIPPED = 60 * 1024 * 1024
 
 NS = {
     "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
@@ -24,6 +26,9 @@ class IntakeError(ValueError):
 def _docx(data: bytes) -> tuple[str, list[dict]]:
     from docx import Document
 
+    with zipfile.ZipFile(io.BytesIO(data)) as z:  # a small .docx can unpack to gigabytes
+        if sum(i.file_size for i in z.infolist()) > MAX_UNZIPPED:
+            raise IntakeError("This Word file is too large once unpacked.")
     doc = Document(io.BytesIO(data))
     parts = [p.text for p in doc.paragraphs]
     for table in doc.tables:
@@ -46,11 +51,29 @@ def _docx(data: bytes) -> tuple[str, list[dict]]:
     return "\n\n".join(p for p in parts if p.strip()), assets
 
 
-def _pdf(data: bytes) -> str:
+def _pdf(data: bytes) -> tuple[str, list[dict]]:
+    """Page text plus embedded pictures, so a scanned PDF is read by OCR like any other image."""
     import fitz
 
+    assets: list[dict] = []
+    seen: set[int] = set()
     with fitz.open(stream=data, filetype="pdf") as pdf:
-        return "\n\n".join(page.get_text() for page in pdf)
+        text = "\n\n".join(page.get_text() for page in pdf)
+        for page in pdf:
+            for info in page.get_images(full=True):
+                xref, width, height = info[0], info[2], info[3]
+                if xref in seen or min(width, height) < 48 or len(assets) >= images.MAX_IMAGES:
+                    continue
+                seen.add(xref)
+                name = f"page {page.number + 1} picture {len(assets) + 1}"
+                if width * height > images.MAX_PIXELS:
+                    assets.append(images.failed_asset(name, "pdf", f"The image is too large ({width}×{height} pixels)."))
+                    continue
+                pix = fitz.Pixmap(pdf, xref)
+                if pix.n - pix.alpha > 3:
+                    pix = fitz.Pixmap(fitz.csRGB, pix)
+                assets.append(images.analyse_image(pix.tobytes("png"), name, "pdf", None))
+    return text, assets
 
 
 def with_image_blocks(text: str, assets: list[dict]) -> str:
@@ -67,7 +90,9 @@ def extract(filename: str, data: bytes) -> tuple[str, list[dict]]:
         if name.endswith(".docx"):
             text, assets = _docx(data)
         elif name.endswith(".pdf"):
-            text = _pdf(data)
+            text, assets = _pdf(data)
+            if not text.strip() and not assets:
+                raise IntakeError("No readable text or pictures were found in this PDF.")
         elif name.endswith((".txt", ".md")):
             text = data.decode("utf-8", errors="replace")
         elif name.endswith(images.IMAGE_EXTS):

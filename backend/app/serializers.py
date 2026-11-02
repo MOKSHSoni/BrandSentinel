@@ -1,5 +1,7 @@
 """JSON views. Evidence is filtered by role: agencies see fact IDs, not the internal documents behind them."""
 
+from datetime import datetime, timezone
+
 from .models import Draft, DraftVersion, Fact, Finding, Rule, SignOff, User
 
 
@@ -67,8 +69,15 @@ def finding_out(f: Finding, viewer: User, facts_by_id: dict[int, Fact]) -> dict:
     return out
 
 
+def _seconds_since(moment) -> int:
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return int((datetime.now(timezone.utc) - moment).total_seconds())
+
+
 def version_meta(v: DraftVersion) -> dict:
     return {
+        "pending_seconds": _seconds_since(v.created_at) if v.review_state == "pending" else 0,
         "id": v.id, "number": v.number, "content_hash": v.content_hash, "change_note": v.change_note,
         "source_filename": v.source_filename, "created_at": v.created_at.isoformat(),
         "created_by": v.created_by.name if v.created_by else None, "review_state": v.review_state,

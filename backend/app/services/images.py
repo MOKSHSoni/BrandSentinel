@@ -15,6 +15,7 @@ from pathlib import Path
 log = logging.getLogger("brandsentinel.images")
 
 MAX_SIDE = 1280
+MAX_PIXELS = 25_000_000  # decoding costs 3 bytes per pixel whatever the file size, so refuse before decoding
 OCR_CONFIG = Path(__file__).with_name("ocr_config.yaml")  # single-threaded, no angle model, no upscaling
 MAX_IMAGES = 8
 IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp")
@@ -47,10 +48,21 @@ def _ocr_engine():
     return _engine
 
 
+class ImageTooLarge(ValueError):
+    pass
+
+
 def load_image(data: bytes):
     from PIL import Image
 
-    img = Image.open(io.BytesIO(data))
+    too_large = f"The image is too large. The limit is {MAX_PIXELS // 1_000_000} megapixels."
+    try:
+        img = Image.open(io.BytesIO(data))  # reads the header only
+    except Image.DecompressionBombError:
+        raise ImageTooLarge(too_large)
+    if img.size[0] * img.size[1] > MAX_PIXELS:
+        raise ImageTooLarge(f"{too_large} This one is {img.size[0]}×{img.size[1]} pixels.")
+    img.draft("RGB", (MAX_SIDE, MAX_SIDE))  # JPEG can decode at reduced size
     img.load()
     img = img.convert("RGB")
     if max(img.size) > MAX_SIDE:
@@ -70,8 +82,12 @@ def run_ocr(img) -> tuple[str, list[dict]]:
         return "unavailable", []
     import numpy as np
 
-    with _infer_lock:
-        result, _ = engine(np.asarray(img))
+    try:
+        with _infer_lock:
+            result, _ = engine(np.asarray(img))
+    except Exception as e:
+        log.warning("OCR failed: %s", e)
+        return "failed", []
     lines = []
     for box, text, conf in result or []:
         conf = float(conf)
@@ -164,6 +180,11 @@ def preview(img, max_side: int = 640) -> str:
     return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
+def failed_asset(name: str, source: str, error: str) -> dict:
+    return {"name": name, "source": source, "alt": None, "ocr_status": "failed", "lines": [], "colours": [],
+            "width": 0, "height": 0, "preview": "", "error": error}
+
+
 def analyse_image(data: bytes, name: str, source: str, alt: str | None) -> dict:
     """Everything the review needs about one image. alt is None when the format has no alt text concept
     (a directly uploaded image) or the attribute is missing."""
@@ -171,8 +192,11 @@ def analyse_image(data: bytes, name: str, source: str, alt: str | None) -> dict:
              "width": 0, "height": 0, "preview": ""}
     try:
         img = load_image(data)
-    except Exception as e:
-        asset["error"] = f"Could not open the image: {e}"
+    except ImageTooLarge as e:
+        asset["error"] = str(e)
+        return asset
+    except Exception:
+        asset["error"] = "This file could not be opened as an image."
         return asset
     asset.update(width=img.size[0], height=img.size[1], preview=preview(img), colours=dominant_colours(img))
     status, lines = run_ocr(img)

@@ -88,6 +88,7 @@ export interface VersionMeta {
   created_at: string;
   created_by: string | null;
   review_state: "pending" | "done" | "failed";
+  pending_seconds: number;
   reviewed_at: string | null;
   rulebook_version: number | null;
   review_ms: number | null;
@@ -197,7 +198,7 @@ export interface OcrLine {
 
 export interface ImageAsset {
   name: string;
-  source: "upload" | "docx" | "web";
+  source: "upload" | "docx" | "web" | "pdf";
   alt: string | null;
   ocr_status: "ok" | "no_text" | "unavailable" | "failed";
   lines: OcrLine[];

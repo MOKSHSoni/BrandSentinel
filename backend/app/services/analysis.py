@@ -184,12 +184,12 @@ def image_findings(text: str, assets: list[dict], rules: list[Rule]) -> list[Fin
         h0, h1 = block["header"]
         label = f"Image {block['index']} ({asset['name']})"
         meta = {"image": block["index"]}
-        if asset.get("ocr_status") == "unavailable":
+        if asset.get("ocr_status") in ("unavailable", "failed"):
             out.append(FindingDraft(
                 check="image", outcome="needs_review", severity="minor", blocking=False, start=h0, end=h1,
-                quote=text[h0:h1], message=f"Text in {label} could not be read on this server.",
-                explanation="Image text recognition is not available here, so claims inside this image were not "
-                            "checked. Check them by hand.", meta=meta))
+                quote=text[h0:h1], message=f"Text in {label} could not be read.",
+                explanation=(asset.get("error") or "Image text recognition is not available here.")
+                + " Claims inside this image were not checked, so check them by hand.", meta=meta))
         if acc:
             cfg = acc.config
             missing_alt = asset.get("source") in ("docx", "web") and not (asset.get("alt") or "").strip()

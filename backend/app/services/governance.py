@@ -25,8 +25,12 @@ def latest_version(draft: Draft) -> DraftVersion:
 
 def sign_off(db: Session, draft: Draft, manager: User, comment: str, overrides: dict[int, str]) -> SignOff:
     v = latest_version(draft)
+    if draft.status == "rejected":
+        raise GovernanceError("This draft was rejected. Start a new draft.")
     if v.review_state != "done":
         raise GovernanceError("The latest version has not finished review.")
+    if db.scalar(select(SignOff).where(SignOff.version_id == v.id, SignOff.status == "valid")):
+        raise GovernanceError(f"v{v.number} is already signed off.")
     if draft.needs_rereview:
         raise GovernanceError(f"Re-run the review first: {draft.rereview_reason}")
     rb = current_rulebook(db)
@@ -47,7 +51,8 @@ def sign_off(db: Session, draft: Draft, manager: User, comment: str, overrides: 
         f.status, f.decision_reason, f.decided_by_id, f.decided_at = "overridden", overrides[f.id].strip(), manager.id, now
         override_log.append({"finding_id": f.id, "quote": f.quote, "reason": f.decision_reason})
 
-    for old in db.scalars(select(SignOff).where(SignOff.draft_id == draft.id, SignOff.status == "valid")):
+    # Includes sign-offs waiting for renewal: this one renews them, so they must stop being reported as open.
+    for old in db.scalars(select(SignOff).where(SignOff.draft_id == draft.id, SignOff.status.in_(["valid", "needs_renewal"]))):
         old.status, old.renewal_reason = "superseded", f"Replaced by sign-off of v{v.number}."
     cited = sorted(v.citations, key=lambda c: c.fact.key)
     s = SignOff(draft_id=draft.id, version_id=v.id, content_hash=v.content_hash, rulebook_version=rb,
@@ -70,7 +75,11 @@ def decide(db: Session, draft: Draft, manager: User, decision: str, comment: str
         raise GovernanceError("Unknown decision.")
     if not comment.strip():
         raise GovernanceError("Give a reason.")
+    if draft.status == "rejected":
+        raise GovernanceError("This draft was already rejected.")
     v = latest_version(draft)
+    if db.scalar(select(SignOff).where(SignOff.version_id == v.id, SignOff.status == "valid")):
+        raise GovernanceError(f"v{v.number} is signed off. Edit the draft to create a new version instead.")
     draft.status = decision
     db.add(Comment(draft_id=draft.id, version_number=v.number, author_id=manager.id, body=comment, kind=decision))
     audit.record(db, manager, f"draft.{decision}", "draft", draft.id,

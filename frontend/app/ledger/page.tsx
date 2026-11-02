@@ -31,6 +31,7 @@ function ChangeFact({ fact, onDone, onCancel }: { fact: Fact; onDone: (ev: Blast
   const [value, setValue] = useState(numeric ? String(fact.value_num) : fact.value_text);
   const [scope, setScope] = useState(fact.scope);
   const [effective, setEffective] = useState(new Date().toISOString().slice(0, 10));
+  const [until, setUntil] = useState(fact.valid_until ?? "");
   const [sourceVersion, setSourceVersion] = useState("");
   const [note, setNote] = useState("");
   const [mode, setMode] = useState<"new" | "retract">("new");
@@ -43,6 +44,7 @@ function ChangeFact({ fact, onDone, onCancel }: { fact: Fact; onDone: (ev: Blast
     if (numeric) c.value_num = Number(value);
     else c.value_text = value;
     if (scope && scope !== fact.scope) c.scope = scope;
+    if (until && until !== fact.valid_until) c.valid_until = until;
     if (sourceVersion) c.source_version = sourceVersion;
     return c;
   };
@@ -92,7 +94,7 @@ function ChangeFact({ fact, onDone, onCancel }: { fact: Fact; onDone: (ev: Blast
         <button onClick={() => { setMode("retract"); setSim(null); }} className={`rounded-md px-3 py-1 ${mode === "retract" ? "bg-red-600 text-white" : "bg-white ring-1 ring-slate-200"}`}>Retract</button>
       </div>
       {mode === "new" && (
-        <div className="grid gap-3 sm:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
           <label className="text-sm">
             <span className="text-slate-600">New value ({fact.unit || fact.kind})</span>
             <input value={value} onChange={(e) => edit(setValue, e.target.value)} type={numeric ? "number" : "text"} className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5" />
@@ -104,6 +106,10 @@ function ChangeFact({ fact, onDone, onCancel }: { fact: Fact; onDone: (ev: Blast
           <label className="text-sm">
             <span className="text-slate-600">Effective from</span>
             <input value={effective} onChange={(e) => edit(setEffective, e.target.value)} type="date" className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5" />
+          </label>
+          <label className="text-sm">
+            <span className="text-slate-600">Valid until</span>
+            <input value={until} onChange={(e) => edit(setUntil, e.target.value)} type="date" className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5" />
           </label>
           <label className="text-sm">
             <span className="text-slate-600">Source version</span>

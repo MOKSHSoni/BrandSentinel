@@ -3,7 +3,7 @@
 import type { Finding, ImageAsset } from "@/lib/types";
 import { Card } from "./ui";
 
-const SOURCE: Record<string, string> = { upload: "Uploaded image", docx: "Picture in the Word file", web: "Image on the web page" };
+const SOURCE: Record<string, string> = { upload: "Uploaded image", docx: "Picture in the Word file", web: "Image on the web page", pdf: "Picture in the PDF" };
 
 /** Each image with its detected text boxes (green: contrast passes, red: fails), alt text and dominant colours. */
 export default function ImageAssets({ assets, findings }: { assets: ImageAsset[]; findings: Finding[] }) {
@@ -69,7 +69,7 @@ export default function ImageAssets({ assets, findings }: { assets: ImageAsset[]
                     ? `${a.lines.length} line(s) read`
                     : a.ocr_status === "no_text"
                       ? "no text found"
-                      : "not available on this server; check the image by hand"}
+                      : `${a.error ?? "not available on this server"}; check the image by hand`}
                 </p>
                 {a.lines.length > 0 && (
                   <table className="w-full">

@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     seed_on_startup: bool = True
     # Load the OCR model in the background at start-up instead of on the first image upload.
     ocr_warmup: bool = True
+    # Finish reviews that a restart interrupted.
+    recover_reviews: bool = True
 
     @property
     def cors_list(self) -> list[str]:

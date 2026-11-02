@@ -35,7 +35,7 @@ If Groq has retired it, choose any current model from their list and set `EXTERN
 
 1. *New → Blueprint*, select the repository. Render reads [`render.yaml`](render.yaml).
    (Without a blueprint: *New → Web Service*, set root directory `backend`, build command
-   `pip install -r requirements.txt`, start command `uvicorn app.main:app --host 0.0.0.0 --port $PORT`.)
+   `pip install -r requirements.txt && pip uninstall -y opencv-python && pip install --force-reinstall --no-deps opencv-python-headless==5.0.0.93`, start command `uvicorn app.main:app --host 0.0.0.0 --port $PORT`.)
 2. Fill in the secret variables:
    - `DATABASE_URL`: the Neon string
    - `EXTERNAL_LLM_API_KEY`: the Groq key
@@ -72,3 +72,6 @@ The login page says so while it waits. Open the link a minute before judging to 
 | `EXTERNAL_LLM_URL` / `_MODEL` / `_API_KEY` | empty | OpenAI-compatible model behind the gateway |
 | `REVIEW_DATE` | today | Fixes "today" for fact validity (demo repeatability) |
 | `SEED_ON_STARTUP` | `true` | Seed Nimbus Pay when the database is empty |
+| `OCR_WARMUP` | `true` | Load image text recognition in the background at start-up |
+| `RECOVER_REVIEWS` | `true` | Finish reviews that a restart interrupted |
+| `MALLOC_ARENA_MAX` | `2` (in `render.yaml`) | Keeps memory use down on Linux; needed on the 512 MB free tier |

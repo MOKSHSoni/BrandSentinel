@@ -1,4 +1,5 @@
 import difflib
+import logging
 import re
 from datetime import datetime, timezone
 
@@ -12,29 +13,52 @@ from ..config import settings
 from ..db import SessionLocal, get_db
 from ..models import TIERS, AuditLog, Comment, Draft, DraftVersion, Fact, Finding, SignOff, User
 from ..serializers import draft_summary, signoff_out, user_out, version_meta, version_out
-from ..services import audit, governance, review
+from ..services import audit, governance, images, review
 from ..services.analysis import FindingDraft, apply_fixes, check_correction
 from ..services.intake import IntakeError, extract, normalise
 
 router = APIRouter(prefix="/api", tags=["drafts"])
+log = logging.getLogger("brandsentinel")
+
+
+def _review(db: Session, version_id: int, actor_id: int | None) -> None:
+    """Run a review; on any error record it on the version so the page can offer a retry instead of hanging."""
+    v = db.get(DraftVersion, version_id)
+    if v is None:  # the demo was reset meanwhile
+        return
+    actor = db.get(User, actor_id) if actor_id else None
+    try:
+        review.run_review(db, v, actor)
+        db.commit()
+    except Exception as e:
+        log.exception("Review of version %s failed", version_id)
+        db.rollback()
+        v = db.get(DraftVersion, version_id)
+        if v is not None:
+            v.review_state, v.ai_status = "failed", f"The review could not finish ({type(e).__name__}). Use Retry."
+            db.commit()
 
 
 def review_in_background(version_id: int, actor_id: int | None) -> None:
     db = SessionLocal()
     try:
-        v = db.get(DraftVersion, version_id)
-        actor = db.get(User, actor_id) if actor_id else None
-        try:
-            review.run_review(db, v, actor)
-            db.commit()
-        except Exception as e:  # keep the draft usable and say what happened
-            db.rollback()
-            v = db.get(DraftVersion, version_id)
-            v.review_state, v.ai_status = "failed", f"Review failed: {type(e).__name__}: {e}"
-            db.commit()
-            raise
+        with review.claim(version_id):
+            _review(db, version_id, actor_id)
+    except review.ReviewBusy:
+        pass
     finally:
         db.close()
+
+
+def recover_pending_reviews() -> None:
+    """A restart kills reviews in progress; finish them at start-up so no draft stays on "Reviewing…"."""
+    db = SessionLocal()
+    try:
+        ids = list(db.scalars(select(DraftVersion.id).where(DraftVersion.review_state == "pending")))
+    finally:
+        db.close()
+    for version_id in ids:
+        review_in_background(version_id, None)
 
 
 def visible_draft(db: Session, draft_id: int, user: User) -> Draft:
@@ -144,6 +168,9 @@ async def add_version(
     latest = governance.latest_version(d)
     if review.content_hash(content) == latest.content_hash:
         raise HTTPException(400, "No changes: the text is identical to the latest version.")
+    if not (file is not None and file.filename) and _image_text(content) != _image_text(latest.content):
+        raise HTTPException(400, "Text read from an image cannot be edited here, because the image would still say "
+                                 "the old thing. Correct the image and upload it as a new version.")
     # A text edit keeps the images of the previous version; a new file brings its own.
     v = review.new_version(db, d, content, user, note.strip() or "Edited", filename,
                            assets if (file is not None and file.filename) else latest.assets)
@@ -153,6 +180,10 @@ async def add_version(
     db.commit()
     background.add_task(review_in_background, v.id, user.id)
     return {"id": d.id, "version": v.number}
+
+
+def _image_text(content: str) -> list[str]:
+    return [content[b["header"][0]:b["body"][1]] for b in images.parse_blocks(content)]
 
 
 def _check_editable(d: Draft, user: User) -> None:
@@ -167,8 +198,12 @@ def rerun_review(draft_id: int, user: User = Depends(current_user), db: Session 
     """Re-check the latest version against the current ledger and rulebook (used after a blast-radius flag)."""
     d = visible_draft(db, draft_id, user)
     v = governance.latest_version(d)
-    review.run_review(db, v, user)
-    db.commit()
+    try:
+        with review.claim(v.id):
+            _review(db, v.id, user.id)
+    except review.ReviewBusy:
+        raise HTTPException(409, "This review is already running. The page updates when it finishes.")
+    db.refresh(v)
     return {"id": d.id, "version": v.number, "state": v.review_state}
 
 
@@ -188,6 +223,7 @@ def decide_finding(finding_id: int, body: Decision, user: User = Depends(current
         raise HTTPException(400, "Decisions apply to the latest version only.")
     if f.outcome == "supported":
         raise HTTPException(400, "Supported claims need no decision.")
+    _check_editable(d, user)
     now = datetime.now(timezone.utc)
     result = {}
     if body.action == "accept":

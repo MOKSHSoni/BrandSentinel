@@ -1,3 +1,4 @@
+import re
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -6,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..auth import current_user, require
+from ..config import settings
 from ..db import get_db
 from ..models import TIERS, BlastEvent, Draft, Fact, Rule, Rulebook, SignOff, User
 from ..serializers import draft_summary, fact_out, rule_out, signoff_out
@@ -56,12 +58,32 @@ class ChangeBody(BaseModel):
     retract: bool = False  # simulate a retraction instead of a new version
 
 
-def _validate(body: FactBody) -> None:
+def _validate(body: FactBody, base: Fact | None = None) -> None:
+    """base is the version being changed; missing fields inherit from it, so check the merged result."""
     if body.sensitivity and body.sensitivity not in TIERS:
         raise HTTPException(400, f"Sensitivity must be one of {', '.join(TIERS)}.")
     if body.kind and body.kind not in ("count", "percentage", "money", "rating", "duration", "ranking", "comparison",
                                        "award", "testimonial"):
         raise HTTPException(400, "Unknown fact kind.")
+    for field in ("metric", "scope", "source", "source_version", "value_text"):
+        value = getattr(body, field)
+        if value is not None and not value.strip():
+            raise HTTPException(400, f"“{field.replace('_', ' ')}” cannot be blank.")
+    kind = body.kind or (base.kind if base else None)
+    if body.value_num is not None:
+        if body.value_num < 0:
+            raise HTTPException(400, "The value cannot be negative.")
+        if kind == "percentage" and body.value_num > 100:
+            raise HTTPException(400, "A percentage cannot be above 100.")
+        if kind == "rating" and body.value_num > 5:
+            raise HTTPException(400, "A rating cannot be above 5.")
+    effective = body.effective_date or (settings.today() if base else None)
+    if base and effective < base.effective_date:
+        raise HTTPException(400, f"The new version cannot start before {base.label} ({base.effective_date:%d %b %Y}).")
+    until = body.valid_until or (base.valid_until if base else None)
+    if effective and until and until < effective:
+        which = "“Valid until”" if body.valid_until else f"The inherited end date ({until:%d %b %Y})"
+        raise HTTPException(400, f"{which} is before the effective date. Give a later “valid until” date.")
 
 
 @router.post("/facts")
@@ -100,9 +122,11 @@ def blast_preview(fact_id: int, user: User = Depends(require("admin", "manager")
 def simulate_fact_change(fact_id: int, body: ChangeBody, user: User = Depends(require("admin", "manager")),
                          db: Session = Depends(get_db)):
     """Brand Impact Simulator: re-verify every affected claim against the proposal. Changes nothing."""
-    _validate(body.changes)
+    fact = _fact(db, fact_id)
+    if not body.retract and fact.status == "approved":
+        _validate(body.changes, fact)
     try:
-        return simulate.simulate_fact(db, _fact(db, fact_id), body.changes.model_dump(exclude_none=True), user,
+        return simulate.simulate_fact(db, fact, body.changes.model_dump(exclude_none=True), user,
                                       retract=body.retract)
     except governance.GovernanceError as e:
         raise HTTPException(400, str(e))
@@ -110,8 +134,9 @@ def simulate_fact_change(fact_id: int, body: ChangeBody, user: User = Depends(re
 
 @router.post("/facts/{fact_id}/supersede")
 def supersede(fact_id: int, body: ChangeBody, user: User = Depends(require("admin")), db: Session = Depends(get_db)):
-    _validate(body.changes)
     old = _fact(db, fact_id)
+    if old.status == "approved":
+        _validate(body.changes, old)
     try:
         new, ev = governance.supersede_fact(db, old, body.changes.model_dump(exclude_none=True), user, body.note)
     except governance.GovernanceError as e:
@@ -206,13 +231,54 @@ class RuleBody(BaseModel):
     note: str = ""
 
 
+def _config_problem(kind: str, cfg: dict) -> str | None:
+    """A bad rule would break every later review, so nothing invalid is saved or simulated."""
+    def strings(key):
+        v = cfg.get(key, [])
+        return isinstance(v, list) and all(isinstance(x, str) and x.strip() for x in v)
+
+    def number(key, low, high):
+        v = cfg.get(key)
+        return isinstance(v, (int, float)) and not isinstance(v, bool) and low <= v <= high
+
+    if kind == "terminology":
+        if not isinstance(cfg.get("correct"), str) or not cfg["correct"].strip():
+            return "A terminology rule needs the correct form."
+        if not strings("variants"):
+            return "Variants must be a list of words."
+    elif kind in ("competitor", "banned_phrase", "tone", "confidential_term"):
+        if not strings("terms"):
+            return "Terms must be a list of words."
+    elif kind == "disclaimer":
+        if not isinstance(cfg.get("required"), str) or not cfg["required"].strip():
+            return "A disclaimer rule needs the required wording."
+        for key in ("trigger_regex", "present_regex"):
+            try:
+                re.compile(cfg.get(key, ""))
+            except (re.error, TypeError):
+                return f"“{key.replace('_', ' ')}” is not a valid pattern."
+            if not cfg.get(key):
+                return f"“{key.replace('_', ' ')}” cannot be blank."
+    elif kind == "accessibility":
+        if not number("min_contrast", 1, 21) or not number("min_contrast_large", 1, 21):
+            return "Contrast limits must be numbers between 1 and 21."
+    elif kind == "palette":
+        colours = cfg.get("colors")
+        if not isinstance(colours, list) or not colours or not all(
+                isinstance(c, str) and re.fullmatch(r"#[0-9a-fA-F]{6}", c.strip()) for c in colours):
+            return "Palette colours must be hex values such as #4F46E5."
+        if not number("tolerance", 0, 442) or not number("min_share", 0, 1):
+            return "Palette tolerance or minimum share is out of range."
+    return None
+
+
 @router.post("/rules/{rule_id}/simulate")
 def simulate_rule_change(rule_id: int, body: "RuleBody", user: User = Depends(require("admin", "manager")),
                          db: Session = Depends(get_db)):
     r = db.get(Rule, rule_id)
     if r is None:
         raise HTTPException(404, "Rule not found.")
-    _validate_rule(body)
+    _validate_rule(body, r)
     return simulate.simulate_rule(db, r, body.model_dump(exclude={"note"}, exclude_none=True))
 
 
@@ -232,7 +298,13 @@ def set_rule_sensitivity(rule_id: int, body: SensitivityBody, user: User = Depen
     return rule_out(r, user)
 
 
-def _validate_rule(body: "RuleBody") -> None:
+def _validate_rule(body: "RuleBody", rule: Rule) -> None:
+    if body.guideline is not None and not body.guideline.strip():
+        raise HTTPException(400, "The guideline cannot be blank.")
+    if body.config is not None:
+        problem = _config_problem(rule.kind, body.config)
+        if problem:
+            raise HTTPException(400, problem)
     if body.severity and body.severity not in ("critical", "major", "minor"):
         raise HTTPException(400, "Severity must be critical, major or minor.")
     if body.status and body.status not in ("active", "retired"):
@@ -246,7 +318,7 @@ def update_rule(rule_id: int, body: RuleBody, user: User = Depends(require("admi
     r = db.get(Rule, rule_id)
     if r is None:
         raise HTTPException(404, "Rule not found.")
-    _validate_rule(body)
+    _validate_rule(body, r)
     rb = governance.change_rule(db, r, body.model_dump(exclude={"note"}), user, body.note)
     db.commit()
     return {"rule": rule_out(r, user), "rulebook_version": rb.version}

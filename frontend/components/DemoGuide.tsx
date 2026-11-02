@@ -2,7 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import type { DraftSummary } from "@/lib/types";
 
 const STEPS = [
   {
@@ -82,7 +84,11 @@ export default function DemoGuide() {
                 className="mt-3 rounded-md bg-indigo-600 px-2 py-1.5 text-xs font-medium text-white hover:bg-indigo-700"
                 onClick={async () => {
                   if (!current) await login(s.who);
-                  router.push(s.go);
+                  if (s.go !== "/") return router.push(s.go);
+                  // Steps 2 and 3 continue with the draft from step 1, if it exists yet.
+                  const drafts = await api<DraftSummary[]>("/api/drafts").catch(() => []);
+                  const post = drafts.find((d) => d.title === "LinkedIn launch post");
+                  router.push(post ? `/drafts/${post.id}` : s.who.startsWith("arjun") ? "/drafts/new?sample=launch_post" : "/");
                 }}
               >
                 {current ? "Go" : `Switch to ${s.as.split(" ")[0]} and go`}

@@ -37,6 +37,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .finally(() => setReady(true));
   }, []);
 
+  useEffect(() => {
+    const expired = () => setUser(null);
+    window.addEventListener("bs-session-expired", expired);
+    return () => window.removeEventListener("bs-session-expired", expired);
+  }, []);
+
   const login = useCallback(async (email: string, password = DEMO_PASSWORD) => {
     const res = await api<{ token: string; user: User }>("/api/auth/login", { method: "POST", json: { email, password } });
     setToken(res.token);

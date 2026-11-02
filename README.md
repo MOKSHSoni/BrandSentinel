@@ -15,7 +15,7 @@ All of the plan's Core MVP is built and tested end to end. Parts of the Next tie
 | Plan item | Where it lives | Status |
 |---|---|---|
 | Versioned Brand Truth Ledger: metric, value, scope, effective date, validity, source and version, supersedes | `backend/app/models.py` (`Fact`), Ledger page | Core: done |
-| Text, DOCX (and PDF) intake | `services/intake.py` | Core: done |
+| Text, DOCX and PDF intake, including pictures in Word files and scanned PDFs | `services/intake.py` | Core: done |
 | Terminology, competitor terms, banned phrases, required disclaimers, tone lexicon | `services/rules.py`, Rulebook page | Core: done |
 | Claim extraction: numbers, rankings, comparisons, awards, testimonials, vague quantities | `services/claims.py` | Core: done |
 | Claim verification with four outcomes (metric, then scope, then date, then value) | `services/verify.py` | Core: done |
@@ -32,7 +32,7 @@ All of the plan's Core MVP is built and tested end to end. Parts of the Next tie
 | **Round 3 · Evidence Chain:** each finding traced from the sentence to its resolution, stale-evidence marking, copyable receipt | `services/evidence.py`, `EvidenceChain.tsx` | Done |
 | **Round 3 · Governance Drift Radar:** recurring findings and reviewer disagreement per period (with denominators and reasons), open risk, fact freshness, linked actions | `services/radar.py`, Drift Radar page | Done |
 | Image checks: OCR so claims inside images are verified, WCAG contrast measured on detected text pixels, brand palette | `services/images.py` | Done (logo aspect ratio not built) |
-| Alt-text checks for pictures in Word files and images on web pages | `services/intake.py`, `services/webpage.py` | Done |
+| Alt-text checks for pictures in Word files and images on web pages | `services/intake.py`, `services/webpage.py` | Done (PDFs have no alt-text check) |
 | Web-page intake with a safe fetch (public addresses only, size and time limits) | `services/webpage.py` | Done |
 | Sensitivity editing for facts and rules (no new version, no rulebook bump) | Ledger and Rulebook pages | Done |
 | Specialist reviewer role, Google Docs/CMS plugin | – | Future work |
@@ -64,32 +64,63 @@ tests (657 ms on SQLite, 668 ms on PostgreSQL; target under 2 s). The 3-draft de
 
 ## Run locally (Windows, macOS or Linux)
 
-Prerequisites: Python 3.11, Node 20+, PostgreSQL 16, and optionally [Ollama](https://ollama.com) with
+You need Python 3.11, Node 20 or newer and PostgreSQL 16. [Ollama](https://ollama.com) is optional; without a model
+every review still runs its rule checks and claim verification, and the AI judge is reported as skipped. To use it:
 `ollama pull qwen3:4b-instruct-2507-q4_K_M`.
 
+**1. Get the code and create the database**
+
 ```bash
-# database (once)
+git clone https://github.com/MOKSHSoni/BrandSentinel.git
+cd BrandSentinel
 psql -U postgres -c "CREATE DATABASE brandsentinel;"
+```
 
-# API on http://localhost:8000
+**2. Start the API** (first terminal, leave it running)
+
+```bash
 cd backend
-python -m venv .venv && .venv/Scripts/activate        # macOS/Linux: source .venv/bin/activate
+python -m venv .venv
+.venv/Scripts/activate            # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env                                   # edit DATABASE_URL if your password differs
+cp .env.example .env              # then set your PostgreSQL password in DATABASE_URL
 uvicorn app.main:app --port 8000
+```
 
-# web app on http://localhost:3000
+Check it at <http://localhost:8000/api/health>. It should answer `"ok": true`.
+
+**3. Start the website** (second terminal, leave it running)
+
+```bash
 cd frontend
 npm install
-echo NEXT_PUBLIC_API_URL=http://localhost:8000 > .env.local
+cp .env.example .env.local
 npm run dev
 ```
 
-The first start creates the tables and seeds Nimbus Pay: 4 users, 12 facts (15 versions), 7 rules and 5 stored drafts. Each creator starts with a draft
-that has open findings (Priya: "Website hero banner"; Arjun: "Instagram story: Diwali offer"). One fact change has
-already happened (F-13 merchants 10,000 → 12,000), so the merchant blog starts flagged by blast radius and its
-sign-off needs renewal. The four-step demo then makes a second change of its own (F-12).
-Open <http://localhost:3000>, pick a person and follow the four-step guide on the dashboard.
+**4. Open <http://localhost:3000>,** pick a person and follow the four-step guide on the dashboard.
+
+The first start creates the tables and seeds Nimbus Pay: 4 users, 12 facts (15 versions), 9 rules and 5 stored drafts.
+Each creator starts with a draft that has open findings (Priya: "Website hero banner"; Arjun: "Instagram story: Diwali
+offer"). One fact change has already happened (F-13 merchants 10,000 → 12,000), so the merchant blog starts flagged by
+blast radius and its sign-off needs renewal. The four-step demo then makes a second change of its own (F-12). To start
+again at any time, sign in as Rahul and use **Insights → Reset demo**.
+
+Sample files for trying uploads are on the **New draft** page: a Word launch post, a banner image and a Word post with
+that banner embedded.
+
+### Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| `pip` fails with `No such file or directory` on Windows | The folder path is too long for Windows. Clone into a short path such as `C:\dev\BrandSentinel`, or enable long paths. |
+| `password authentication failed` when the API starts | Set your PostgreSQL password in `DATABASE_URL` in `backend/.env`. |
+| `database "brandsentinel" does not exist` | Run the `CREATE DATABASE` command from step 1. |
+| `psql` is not recognised | Use its full path, on Windows `"C:\Program Files\PostgreSQL\16\bin\psql.exe"`. |
+| The website says it cannot reach the server | Check the API is running and `NEXT_PUBLIC_API_URL` in `frontend/.env.local` matches it. |
+| `libGL.so.1` error on a Linux server | Install the headless OpenCV build, as `render.yaml` does. |
+| Reviews take about a minute | That is the local model. Set `LOCAL_LLM_ENABLED=false` in `backend/.env` for rules only. |
+| Drafts stay valid only until 31 Dec 2026 | The demo facts end then. Set `REVIEW_DATE=2026-10-27` in `backend/.env` to keep them current. |
 
 | Person | Role | Can do |
 |---|---|---|
@@ -104,19 +135,33 @@ The demo password for every account is `demo1234`. The login page signs you in w
 
 ```bash
 cd backend
-python -m pytest -q                                    # SQLite, no model needed
-TEST_DATABASE_URL=postgresql+psycopg://postgres:<pw>@localhost:5432/brandsentinel_test python -m pytest -q
+python -m pytest -q        # 113 tests on SQLite, no model or database setup needed
+
+# the same tests on PostgreSQL (create a database called brandsentinel_test first)
+TEST_DATABASE_URL=postgresql+psycopg://postgres:<password>@localhost:5432/brandsentinel_test python -m pytest -q
 ```
 
-There are 80 tests (50 core, 30 for Round 3). The core tests cover number parsing, every claim type, the four outcomes and the near-misses (metric, scope,
-date, expiry, conflicting facts), every rule type, gateway routing and masking, all three correction checks
-(including a goal check that fails), rejection of off-schema model output, the full four-step journey over HTTP,
-permissions, role-based evidence, override and dismissal reasons, edit-after-sign-off, rulebook changes,
-retraction, PDF and DOCX intake, the rule that restricted content never reaches an external model, and blast
-radius over 500 drafts in under 2 seconds. The Round 3 tests prove the simulator writes nothing and reports the right
-outcome changes (including a stale preview being detected at commit), evidence attribution and role filtering, radar
-counts and time windows with no invented metrics, OCR claims, contrast, palette and alt text, OCR being unavailable,
-the safe web fetch refusing private addresses, sensitivity editing and the additive database migration.
+They cover number parsing, every claim type, the four outcomes and the near-misses (metric, scope, date, expiry,
+conflicting facts), every rule type, gateway routing and masking, all three correction checks, rejection of off-schema
+model output, the full four-step journey over HTTP, permissions, role-based evidence, override and dismissal reasons,
+edit-after-sign-off, rulebook changes, retraction and every intake format.
+
+For Round 3 they also prove that the simulator writes nothing and reports the right outcome changes, including a stale
+preview being detected at commit; evidence attribution and role filtering; radar counts and time windows with no
+invented metrics; OCR claims, contrast, palette and alt text; and the safe web fetch refusing private addresses.
+
+The hardening tests cover what a careless or hostile user does: oversized images and zip bombs, reviews interrupted by a
+restart, retrying a running review, repeating a sign-off, acting on a rejected draft, invalid rules and facts, and
+editing away text read from an image.
+
+**Browser test.** `e2e/run_e2e.py` drives a real browser through the main journeys, bad input, refreshes, double-clicks,
+wrong addresses, role limits, expired sessions and phone width. With the API and website running:
+
+```bash
+pip install -r e2e/requirements.txt
+playwright install chromium
+python e2e/run_e2e.py      # resets the demo data; refuses non-localhost addresses unless you pass --live
+```
 
 ## Measured reliability
 
@@ -182,3 +227,7 @@ general performance claims. The manual-checklist baseline is timed by people and
 - **Sign-off is not publishing control.** A publishing integration is future work.
 - **Masking cannot hide everything.** Drafts containing codenames are treated as restricted and kept local.
 - **Image checks cover measurable properties only.** Logo correctness and design quality still need a person.
+- **Image limits.** Images above 25 megapixels are refused, because decoding them would exhaust the free server's memory.
+  Up to 8 images are checked per file or web page.
+- **One shared demo.** All visitors use the same data, so testers see each other's changes. Reset demo restores it.
+- **The free server sleeps** after about 15 minutes idle; the next visit takes 30–50 seconds.

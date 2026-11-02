@@ -1,7 +1,9 @@
 """Run the pipeline for a stored draft version and persist findings, citations and the model call log."""
 
 import hashlib
+import threading
 import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
 
 from sqlalchemy import func, select
@@ -13,6 +15,28 @@ from . import audit, llm
 from .analysis import analyse
 from .gateway import Masker, route_request
 from .rules import PII_PATTERNS
+
+
+class ReviewBusy(RuntimeError):
+    pass
+
+
+_active: set[int] = set()
+_active_lock = threading.Lock()
+
+
+@contextmanager
+def claim(version_id: int):
+    """Only one review of a version at a time, so a retry cannot collide with a running review."""
+    with _active_lock:
+        if version_id in _active:
+            raise ReviewBusy()
+        _active.add(version_id)
+    try:
+        yield
+    finally:
+        with _active_lock:
+            _active.discard(version_id)
 
 
 def content_hash(text: str) -> str:
