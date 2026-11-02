@@ -431,14 +431,12 @@ export default function DraftPage() {
                 <h2 className="text-sm font-semibold text-slate-700">Open findings ({groups.open.length})</h2>
                 <span className="text-xs text-slate-500">{groups.open.filter((f) => f.blocking).length} block sign-off</span>
               </div>
-              {groups.open.length === 0 && (accepted > 0 && d.is_latest ? (
+              {accepted > 0 && d.is_latest && (
                 <Card className="border-amber-200 p-4 text-sm text-amber-900">
-                  Every finding is decided, but {accepted} accepted fix{accepted > 1 ? "es are" : " is"} not in the text yet.
-                  Use “Apply” above to create the corrected version.
+                  {accepted} accepted fix{accepted > 1 ? "es are" : " is"} not in the text yet. Use “Apply” above to create the corrected version.
                 </Card>
-              ) : (
-                <Card className="p-4 text-sm text-emerald-700">No open issues on this version.</Card>
-              ))}
+              )}
+              {groups.open.length === 0 && accepted === 0 && <Card className="p-4 text-sm text-emerald-700">No open issues on this version.</Card>}
               {groups.open.map((f: Finding) => (
                 <FindingCard key={f.id} f={f} editable={canEdit} selected={selected === f.id} onSelect={() => setSelected(f.id)} onChanged={load} />
               ))}

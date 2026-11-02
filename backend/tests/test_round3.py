@@ -398,3 +398,19 @@ def test_retraction_simulation(client, db):
     r = client.post(f"/api/facts/{f12['id']}/retract", headers=rahul,
                     json={"note": "wrong", "expected_draft_ids": sim["expected_draft_ids"]}).json()
     assert r["changed_since_preview"] is False
+
+
+def test_radar_query_count_does_not_grow_with_findings(client):
+    from sqlalchemy import event
+
+    from app.db import engine
+
+    meera = login(client, "meera")
+    seen = []
+    listener = lambda conn, cur, statement, params, ctx, many: seen.append(statement)
+    event.listen(engine, "before_cursor_execute", listener)
+    try:
+        assert client.get("/api/radar?days=0", headers=meera).status_code == 200
+    finally:
+        event.remove(engine, "before_cursor_execute", listener)
+    assert len(seen) < 20, f"{len(seen)} queries"

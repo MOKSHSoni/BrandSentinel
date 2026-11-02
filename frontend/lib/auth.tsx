@@ -33,7 +33,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     api<User>("/api/auth/me")
       .then(setUser)
-      .catch(() => setToken(null))
+      .catch(() => {
+        /* api() clears the token on a real 401; a network failure keeps the session */
+      })
       .finally(() => setReady(true));
   }, []);
 

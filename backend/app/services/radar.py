@@ -8,13 +8,15 @@ denominator; small samples are labelled instead of being presented as a trend.
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..config import settings
 from ..models import Citation, Draft, DraftVersion, Fact, Finding, Rule, SignOff, User
 
 MIN_DECISIONS = 3  # below this a disagreement rate is shown as "too few decisions to judge"
 EXPIRY_HORIZON_DAYS = 30
+# Load related rows up front: one query per finding means dozens of database round trips on a small server.
+FINDING_CONTEXT = (joinedload(Finding.version).joinedload(DraftVersion.draft), joinedload(Finding.decided_by))
 
 
 def _label(f: Finding, rules: dict) -> tuple[str, str]:
@@ -41,7 +43,7 @@ def build_radar(db: Session, viewer: User, days: int | None) -> dict:
     # 1. Recurring findings in the period: how many reviewed versions each check fired in.
     recurring: dict[str, dict] = {}
     if reviewed_ids:
-        for f in db.scalars(select(Finding).where(Finding.version_id.in_(reviewed_ids), Finding.outcome != "supported")):
+        for f in db.scalars(select(Finding).options(*FINDING_CONTEXT).where(Finding.version_id.in_(reviewed_ids), Finding.outcome != "supported")):
             key, label = _label(f, rules)
             e = recurring.setdefault(key, {"key": key, "label": label, "rule_key": rules[f.rule_id].key if f.rule_id in rules else None,
                                            "findings": 0, "versions": set(), "examples": []})
@@ -54,7 +56,7 @@ def build_radar(db: Session, viewer: User, days: int | None) -> dict:
                            key=lambda e: (-e["versions_affected"], -e["findings"]))
 
     # 2. Disagreement: decisions made in the period, with the reasons people recorded.
-    dq = select(Finding).where(Finding.status.in_(["accepted", "edited", "dismissed", "overridden"]),
+    dq = select(Finding).options(*FINDING_CONTEXT).where(Finding.status.in_(["accepted", "edited", "dismissed", "overridden"]),
                                Finding.decided_at.is_not(None))
     if since:
         dq = dq.where(Finding.decided_at >= since)
@@ -83,7 +85,9 @@ def build_radar(db: Session, viewer: User, days: int | None) -> dict:
     # 3. Unresolved risk right now (not limited to the period).
     latest = (select(DraftVersion.draft_id, func.max(DraftVersion.number).label("n"))
               .group_by(DraftVersion.draft_id).subquery())
-    current_versions = list(db.scalars(select(DraftVersion).join(
+    current_versions = list(db.scalars(select(DraftVersion).options(
+        joinedload(DraftVersion.draft), selectinload(DraftVersion.findings),
+        selectinload(DraftVersion.citations).joinedload(Citation.fact)).join(
         latest, (latest.c.draft_id == DraftVersion.draft_id) & (latest.c.n == DraftVersion.number))))
     if viewer.role == "creator":
         current_versions = [v for v in current_versions if v.draft.created_by_id == viewer.id]
@@ -98,7 +102,7 @@ def build_radar(db: Session, viewer: User, days: int | None) -> dict:
             blocking.append({"draft_id": d.id, "title": d.title, "version": v.number, "status": d.status,
                              "open_blocking": len(open_blocking),
                              "critical": sum(1 for f in open_blocking if f.severity == "critical")})
-        for c in db.scalars(select(Citation).where(Citation.version_id == v.id)):
+        for c in v.citations:
             fact = c.fact
             if fact.status != "approved":
                 expired_deps.append({"draft_id": d.id, "title": d.title, "fact": fact.label, "fact_key": fact.key,
@@ -106,9 +110,9 @@ def build_radar(db: Session, viewer: User, days: int | None) -> dict:
             elif fact.valid_until and fact.valid_until < today:
                 expired_deps.append({"draft_id": d.id, "title": d.title, "fact": fact.label, "fact_key": fact.key,
                                      "problem": f"expired {fact.valid_until:%d %b %Y}"})
-    renewals = [{"signoff_id": s.id, "draft_id": s.draft_id, "title": db.get(Draft, s.draft_id).title,
-                 "reason": s.renewal_reason}
-                for s in db.scalars(select(SignOff).where(SignOff.status == "needs_renewal"))]
+    renewals = [{"signoff_id": s.id, "draft_id": s.draft_id, "title": title, "reason": s.renewal_reason}
+                for s, title in db.execute(select(SignOff, Draft.title).join(Draft, Draft.id == SignOff.draft_id)
+                                           .where(SignOff.status == "needs_renewal"))]
     blocking.sort(key=lambda b: (-b["critical"], -b["open_blocking"]))
 
     # 4. Fact freshness, from recorded validity dates.

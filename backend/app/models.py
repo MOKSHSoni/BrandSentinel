@@ -131,7 +131,7 @@ class DraftVersion(Base):
     ai_status: Mapped[str] = mapped_column(Text, default="")
     # Images found in the upload (DOCX pictures, uploaded images, web-page images): alt text, OCR lines with
     # boxes, measured text contrast, dominant colours and a small preview. See services/images.py.
-    assets: Mapped[list | None] = mapped_column(JSON, default=list, nullable=True)
+    assets: Mapped[list | None] = mapped_column(JSON, default=list, nullable=True, deferred=True)
 
     draft: Mapped[Draft] = relationship(back_populates="versions")
     created_by: Mapped[User] = relationship()

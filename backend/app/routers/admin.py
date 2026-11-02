@@ -1,3 +1,4 @@
+import time
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -19,11 +20,26 @@ from ..services.review import get_setting, set_setting
 router = APIRouter(prefix="/api", tags=["admin"])
 
 
+STARTED = time.time()
+
+
+def _memory_mb() -> dict:
+    """Current and peak memory of this process, from Linux's /proc (absent on other systems)."""
+    try:
+        with open("/proc/self/status") as fh:
+            fields = dict(line.split(":", 1) for line in fh if ":" in line)
+        return {"now": int(fields["VmRSS"].split()[0]) // 1024, "peak": int(fields["VmHWM"].split()[0]) // 1024}
+    except (OSError, KeyError, ValueError):
+        return {}
+
+
 @router.get("/health")
 def health(db: Session = Depends(get_db)):
     db.execute(select(1))
     return {
         "ok": True,
+        "uptime_s": int(time.time() - STARTED),
+        "memory_mb": _memory_mb(),
         "local_model": {"enabled": settings.local_llm_enabled, "available": llm.local_available(),
                         "model": settings.local_llm_model},
         "external_model": {"configured": llm.external_available(), "model": settings.external_llm_model or None},
